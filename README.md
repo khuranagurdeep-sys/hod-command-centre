@@ -4,7 +4,7 @@ A working demo of a project-management and ERP system for Hands On Design (archi
 
 **Open the demo:** https://khuranagurdeep-sys.github.io/hod-command-centre/
 
-- Six interfaces: Owner, Project Manager, Designer/office, Site supervisor app, Client portal, Contractor portal
+- Seven interfaces: Owner desktop, Owner phone app, Project Manager, Designer/office, Site supervisor app, Client portal, Contractor portal
 - Interactive 3D design viewer (upload .glb models), GST invoice designer with A4 print/PDF, live activity feed, Ctrl/⌘+K command palette
 - Estimates & BOQ from a rate library, client material selections with sign-off, concept-sketch-to-render slider, live NCR site map, capacity plan, WhatsApp Business template previews, spoken AI briefing
 - Two-minute auto-play guided tour (with optional narration) and ten guided demo scenarios

@@ -294,7 +294,7 @@ ${S.ui.side ? '<div class="scrim" data-act="side"></div>' : ''}
 <div class="search">${H.ic('search')}<input id="gsearch" type="search" placeholder="Search projects, clients, drawings, invoices…" autocomplete="off" data-inp="search" aria-label="Global search"><span class="kbd">Ctrl K</span><div id="sres"></div></div>
 <div class="sp"></div>
 <span class="hide-sm">${H.Live ? H.Live.pill() : ''}</span>
-<button class="btn gold" data-act="scen-menu">${H.ic('play')}<span class="hide-sm">Demo scenarios</span></button>
+${S.role === 'owner' ? `<button class="btn icon hide-sm" data-act="role" data-id="ownerm" aria-label="Open the owner phone app" title="Owner phone app">${H.ic('phone')}</button>` : ''}<button class="btn gold" data-act="scen-menu">${H.ic('play')}<span class="hide-sm">Demo scenarios</span></button>
 <div class="relw"><button class="btn icon" data-act="pop" data-id="create" aria-label="Quick create">${H.ic('plus')}</button>${S.ui.pop === 'create' ? H.createMenu() : ''}</div>
 <button class="btn icon relw" data-go="notifications" aria-label="Notifications">${H.ic('bell')}${c.notifications ? `<span style="position:absolute;top:3px;right:3px;background:var(--bad);color:#fff;border-radius:10px;font-size:10.5px;font-weight:700;padding:0 5px;line-height:16px">${c.notifications}</span>` : ''}</button>
 <div class="relw"><button class="btn" data-act="pop" data-id="role" style="padding-left:5px">${H.av(S.user)}<span class="hide-sm">${esc(u ? u.name.split(' ')[0] : '')}</span></button>${S.ui.pop === 'role' ? H.roleMenu() : ''}</div>
@@ -309,6 +309,7 @@ ${S.ui.side ? '<div class="scrim" data-act="side"></div>' : ''}
     try {
       if (!S.session) html = H.V.login();
       else if (S.role === 'site') html = H.Portal.site();
+      else if (S.role === 'ownerm' && H.Portal.ownerm) html = H.Portal.ownerm();
       else if (S.role === 'client') html = H.Portal.client();
       else if (S.role === 'contractor') html = H.Portal.contractor();
       else {

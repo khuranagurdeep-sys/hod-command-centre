@@ -17,7 +17,7 @@
     const visits = d.visits.filter(v => v.date === H.TODAY && v.status === 'Scheduled' && A.some(p => p.id === v.project));
     const meets = d.events.filter(e => e.date === H.TODAY);
     const waiting = d.drawings.filter(x => x.status === 'Client Review' && H.dif(x.submitted) <= -3 && A.some(p => p.id === x.project));
-    const dec = S.role === 'owner' ? H.decisions() : [];
+    const dec = H.isOwner() ? H.decisions() : [];
     const over = H.workload().filter(w => w.util > 110);
     const yest = d.visits.filter(v => v.status === 'Completed' && H.dif(v.date) >= -1);
     const obs = yest.reduce((s, v) => s + v.obs.filter(o => o.status !== 'Closed').length, 0);
@@ -28,7 +28,7 @@
     const hello = new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening';
     const fin = S.role !== 'designer';
     const sec = (t, items) => items.length ? `<div class="bsec"><h3>${t}</h3><ul>${items.join('')}</ul></div>` : '';
-    return `<div class="brief" data-k="brief"><div class="bg">${H.mark(260)}</div><div class="row between" style="align-items:flex-start"><div><div class="small" style="color:var(--gold2)">${ic('spark')} HOD AI · daily briefing · ${H.fdy(H.TODAY)}</div><h2 style="margin-top:6px;font-size:20px">${hello}, ${esc(u ? u.name.split(' ')[0] : '')}${S.role === 'owner' ? ' Ji' : ''}. ${b.risky.length} of ${b.A.length} projects need attention${fin ? `, ${H.lk(b.f.overdue)} is overdue` : ''}${b.dec.length ? ` and ${b.dec.length} decisions are waiting for you` : ''}.</h2></div></div>
+    return `<div class="brief" data-k="brief"><div class="bg">${H.mark(260)}</div><div class="row between" style="align-items:flex-start"><div><div class="small" style="color:var(--gold2)">${ic('spark')} HOD AI · daily briefing · ${H.fdy(H.TODAY)}</div><h2 style="margin-top:6px;font-size:20px">${hello}, ${esc(u ? u.name.split(' ')[0] : '')}${H.isOwner() ? ' Ji' : ''}. ${b.risky.length} of ${b.A.length} projects need attention${fin ? `, ${H.lk(b.f.overdue)} is overdue` : ''}${b.dec.length ? ` and ${b.dec.length} decisions are waiting for you` : ''}.</h2></div></div>
 ${sec('Projects that need attention', b.risky.slice(0, full ? 4 : 3).map(x => `<li>${link('project-' + x.p.id, esc(x.p.name))} — ${esc(x.r.reasons.slice(0, 2).join('; ') || 'behind plan')}${x.r.slip > 0 ? `; handover may slip ~${x.r.slip} days` : ''}.</li>`))}
 ${fin ? sec('Money', b.od.slice(0, 3).map(i => `<li>${link('finance', esc(i.no))} ${esc(H.P(i.project).name)} — ${H.lk(H.invOut(i))}, ${-H.dif(i.due)} days overdue, ${i.reminders.length} reminder${i.reminders.length === 1 ? '' : 's'} sent.</li>`).concat(b.unv.map(x => `<li>${H.lk(x.amount)} from ${esc(H.P(x.project).name)} is a client claim (${esc(x.ref.toLowerCase())}) — ${link('finance', 'not counted until bank-matched')}.</li>`))) : ''}
 ${sec('Today', [b.visits.length ? `<li>${b.visits.length} site visit${b.visits.length > 1 ? 's' : ''}: ${b.visits.map(v => esc(H.P(v.project).name) + ' (' + esc(H.first(v.by)) + ')').join(', ')}.</li>` : '', ...b.meets.map(e => `<li>${e.time} ${esc(e.title)}.</li>`)].filter(Boolean))}
@@ -48,7 +48,7 @@ ${full ? sec('Since yesterday', [`<li>${b.yest.length} site reports submitted wi
   const SUG = ['Which projects are delayed?', 'What is pending on Kapoor Residence?', 'Who visited Sharma Residence site yesterday?', 'Which drawings are awaiting approval?', 'Which payments are overdue?', 'What work is pending with contractors this week?', 'Which employees have overdue tasks?', 'Which project is likely to miss handover?', 'What decisions need my approval today?', 'Prepare weekly report for Aurum Capital Office'];
 
   AI.answer = raw => {
-    const q = raw.toLowerCase().trim(), d = db(), A = scope(), p = findProject(q), fin = S.role !== 'designer', own = S.role === 'owner';
+    const q = raw.toLowerCase().trim(), d = db(), A = scope(), p = findProject(q), fin = S.role !== 'designer', own = H.isOwner();
     if (p && S.role === 'designer' && !A.includes(p) && p.stage !== 'completed') return out(`You are not on the ${esc(p.name)} team, so I can’t show its records. Ask the project manager or owner.`);
     // weekly report
     if (/weekly|progress report|status report|\breport\b/.test(q)) {
@@ -158,13 +158,13 @@ ${r.reasons.length ? `<li>Risks: ${esc(r.reasons.join('; '))}.</li>` : ''}</ul>`
     d.drawings.filter(x => x.rev >= 3 && x.status !== 'Issued for Construction').forEach(x => L.push([`${x.title} (${H.P(x.project).name}) is on revision R${x.rev} — check the brief`, 'drawings']));
     d.tasks.filter(H.stale).slice(0, 3).forEach(t => L.push([`“${t.title}” not updated for ${-H.dif(t.updated)} days (${H.name(t.assignee)})`, 'tasks']));
     d.materials.filter(m => m.shortage).forEach(m => L.push([`Shortage: ${m.item} for ${H.P(m.project).name}`, 'procurement']));
-    if (S.role === 'owner') H.active().filter(p => p.value && H.margin(p).pct < 0.2).forEach(p => L.push([`${p.name} forecast margin ${Math.round(H.margin(p).pct * 100)}% — below the 20% floor`, 'finance']));
+    if (H.isOwner()) H.active().filter(p => p.value && H.margin(p).pct < 0.2).forEach(p => L.push([`${p.name} forecast margin ${Math.round(H.margin(p).pct * 100)}% — below the 20% floor`, 'finance']));
     return L;
   };
 
   H.V.ai = () => {
     const pr = AI.predictions(), an = AI.anomalies(), w = H.workload().filter(x => x.util > 110 || x.util < 50).sort((a, b) => b.util - a.util);
-    const chat = S.ui.chat.length ? S.ui.chat : [{ ai: true, html: `Namaste${S.role === 'owner' ? ' Rohit Ji' : ''}. I’m the HOD Project Copilot. I answer from the Command Centre’s records — projects, drawings, tasks, visits, contractors, invoices and the team — and show the records behind every answer. If the records don’t have it, I’ll say so.`, src: [] }];
+    const chat = S.ui.chat.length ? S.ui.chat : [{ ai: true, html: `Namaste${H.isOwner() ? ' Rohit Ji' : ''}. I’m the HOD Project Copilot. I answer from the Command Centre’s records — projects, drawings, tasks, visits, contractors, invoices and the team — and show the records behind every answer. If the records don’t have it, I’ll say so.`, src: [] }];
     return `<div class="pagehead"><div><h1>AI Command Centre</h1><p>Briefing, questions in plain language, delay forecasts and early warnings — computed from records you are allowed to see.</p></div></div>
 <div class="grid g2"><div class="card" style="display:flex;flex-direction:column"><div class="hd"><h2>${ic('spark')} Ask HOD AI</h2>${S.ui.chat.length ? '<button class="btn sm ghost" data-act="chat-clear">Clear</button>' : ''}</div><div class="chat" aria-live="polite">${chat.map(m => m.me ? `<div class="msg me">${esc(m.text)}</div>` : `<div class="msg ai">${m.html}${m.src && m.src.length ? `<div class="src">${m.src.map(([l, g]) => `<a href="#${g}" data-go="${g}">${ic('doc')} ${esc(l)}</a>`).join('')}</div>` : ''}</div>`).join('')}</div>
 <div class="chips" style="margin:8px 0 10px">${SUG.slice(0, S.ui.chat.length ? 4 : 10).map(s => `<button class="btn sm" data-act="ask" data-q="${esc(s)}">${esc(s)}</button>`).join('')}</div>

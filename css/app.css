@@ -370,17 +370,17 @@ img.ph.site{filter:saturate(.85) contrast(1.02)}
 
 /* ---------- phone (site app) & portals ---------- */
 .phone-wrap{min-height:100%;display:grid;place-items:start center;padding:22px 12px;background:radial-gradient(80% 60% at 50% 0%,var(--accbg),var(--bg))}
-.phone{width:min(410px,100%);background:var(--panel);border:10px solid #101412;border-radius:44px;overflow:hidden;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;min-height:800px;position:relative}
+.phone{width:min(410px,100%);background:var(--panel);border:10px solid #101412;border-radius:44px;overflow:hidden;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;height:min(860px,calc(100vh - 80px));min-height:640px;position:relative}
 .phone .sb{display:flex;justify-content:space-between;padding:12px 26px 4px;font-size:12.5px;font-weight:700;background:var(--char);color:#fff}
-.phone .ph{background:var(--char);color:#fff;padding:8px 18px 18px}
-.phone .ph h2{color:#fff;font-size:19px}
+.phone .phh{background:var(--char);color:#fff;padding:8px 18px 18px}
+.phone .phh h2{color:#fff;font-size:19px}
 .phone .pb{flex:1;padding:16px 16px 96px;overflow-y:auto}
 .phone .tabbar{position:sticky;bottom:0;display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);background:color-mix(in srgb,var(--panel) 92%,transparent);backdrop-filter:blur(10px)}
 .phone .tabbar button{border:0;background:none;padding:9px 0 14px;font-size:11.5px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;min-height:58px}
 .phone .tabbar button.on{color:var(--acc)}
 .phone .tabbar svg{width:22px;height:22px}
 .phone .kpis{gap:8px}.phone .kpi{min-height:78px;padding:11px 12px}.phone .kpi .v{font-size:22px}
-@media(max-width:480px){.phone-wrap{padding:0}.phone{border-radius:0;border:0;min-height:100vh}}
+@media(max-width:480px){.phone-wrap{padding:0}.phone{border-radius:0;border:0;height:100vh;min-height:0}}
 .portal-top{background:color-mix(in srgb,var(--panel) 92%,transparent);backdrop-filter:blur(12px);color:var(--ink);padding:12px max(3vw,16px);display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30}
 .portal-top .ttl{font-size:15.5px;font-weight:800}
 .portal-body{padding:22px max(3vw,16px) 80px;max-width:1240px;margin:0 auto}
@@ -499,3 +499,24 @@ table.heat td{padding:8px 10px}
 .tour .tbar i{display:block;height:100%;background:#D9B984;width:0;animation:tbar linear forwards}
 @keyframes tbar{to{width:100%}}
 @media(max-width:600px){.tour .row{flex-wrap:wrap!important}}
+/* owner phone app */
+.omchips{display:flex;gap:8px;overflow-x:auto;margin-top:14px;padding-bottom:4px;scrollbar-width:none}
+.omchip{flex:none;display:flex;flex-direction:column;gap:2px;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:9px 12px;min-width:118px;cursor:pointer;box-shadow:var(--shadow-sm)}
+.omchip b{font:800 16px var(--display);letter-spacing:-.02em;white-space:nowrap}
+.omrow{display:flex;gap:11px;align-items:center;width:100%;border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:8px 10px 8px 8px;cursor:pointer;box-shadow:var(--shadow-sm)}
+.omrow img{width:58px;height:44px;object-fit:cover;border-radius:10px;flex:none}
+.omrow.big img{width:72px;height:54px}
+.omrow .t{font-weight:700;font-size:14px}.omrow .s{font-size:12.5px;color:var(--muted)}
+.notif{display:flex;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--panel) 92%,transparent);border:1px solid var(--line);border-radius:16px;padding:10px 6px 10px 10px;margin-bottom:12px;box-shadow:var(--shadow);cursor:pointer;animation:drop .4s ease-out}
+@keyframes drop{from{transform:translateY(-14px);opacity:0}}
+.notif .wav{background:var(--char);color:#fff}
+.tabbar .badge{position:absolute;top:5px;left:calc(50% + 6px);background:var(--bad);color:#fff;font-size:10px;font-weight:800;border-radius:10px;padding:0 5px;line-height:15px}
+.sheetscrim{position:absolute;inset:0;background:rgba(8,12,10,.45);z-index:5}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:6;background:var(--panel);border-radius:24px 24px 0 0;padding:10px 20px 22px;box-shadow:0 -20px 50px -20px rgba(0,0,0,.4);animation:sheet .25s ease-out}
+@keyframes sheet{from{transform:translateY(40px);opacity:.5}}
+.sheet .grab{width:40px;height:5px;border-radius:5px;background:var(--line2);margin:0 auto 12px}
+.fp{display:grid;place-items:center;width:82px;height:82px;border-radius:50%;margin:0 auto;border:2px solid var(--acc);background:var(--accbg);color:var(--acc);cursor:pointer;transition:transform .15s,background .2s}
+.fp:active{transform:scale(.94)}
+.fp.ok{background:var(--acc);color:#fff;border-color:var(--acc);animation:fpok .6s ease-out}
+@keyframes fpok{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--acc) 60%,transparent)}100%{box-shadow:0 0 0 22px transparent}}
+.phone .pb{min-height:0}
