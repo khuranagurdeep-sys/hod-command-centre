@@ -520,3 +520,7 @@ table.heat td{padding:8px 10px}
 .fp.ok{background:var(--acc);color:#fff;border-color:var(--acc);animation:fpok .6s ease-out}
 @keyframes fpok{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--acc) 60%,transparent)}100%{box-shadow:0 0 0 22px transparent}}
 .phone .pb{min-height:0}
+/* iPhone: no zoom on input focus; phone frames fit the visible screen */
+@media(max-width:700px){input.in,select.in,textarea.in,.search input,.cmdk input{font-size:16px}}
+@media(max-width:480px){.phone{height:100vh;height:100dvh}}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}

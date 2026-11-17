@@ -264,8 +264,9 @@
   };
 
   // ---------- router & render ----------
-  H.go = h => { S.ui.drawer = null; S.ui.modal = null; S.ui.pop = null; S.ui.side = false; S.ui.route = h; try { if (location.hash.slice(1) !== h) location.hash = h; } catch (e) { /* sandbox */ } H.render(); window.scrollTo(0, 0); };
-  window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if (h && h !== S.ui.route) { S.ui.route = h; S.ui.drawer = null; S.ui.modal = null; H.render(); } });
+  H.top = () => { const f = () => { try { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; } catch (e) { /* ignore */ } }; f(); requestAnimationFrame(f); setTimeout(f, 60); };
+  H.go = h => { S.ui.drawer = null; S.ui.modal = null; S.ui.pop = null; S.ui.side = false; S.ui.route = h; try { if (location.hash.slice(1) !== h) location.hash = h; } catch (e) { /* sandbox */ } H.render(); H.top(); };
+  window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if (h && h !== S.ui.route) { S.ui.route = h; S.ui.drawer = null; S.ui.modal = null; H.render(); H.top(); } });
   H.counts = () => {
     const d = db(); const ntf = d.notes.filter(n => !n.read).length;
     return {
@@ -367,8 +368,8 @@ ${S.role === 'owner' ? `<button class="btn icon hide-sm" data-act="role" data-id
     drawer: a => { S.ui.drawer = { type: a.dataset.type, id: a.dataset.id }; H.render(); },
     tab: a => { S.ui.tab[a.dataset.k] = a.dataset.v; H.render(); },
     filt: a => { S.ui.f[a.dataset.k] = a.dataset.v; H.render(); },
-    role: a => { const r = a.dataset.id; S.role = r; S.user = H.ROLES[r].user; if (r === 'client') S.clientId = S.clientId || 'cl1'; if (r === 'contractor') S.contractorId = S.contractorId || 'c1'; S.ui.pop = null; S.ui.route = 'dashboard'; H.save(); H.render(); H.toast('Switched to ' + H.ROLES[r].label); },
-    logout: () => { S.session = null; S.ui.pop = null; H.save(); H.render(); },
+    role: a => { const r = a.dataset.id; S.role = r; S.user = H.ROLES[r].user; if (r === 'client') S.clientId = S.clientId || 'cl1'; if (r === 'contractor') S.contractorId = S.contractorId || 'c1'; S.ui.pop = null; S.ui.route = 'dashboard'; H.save(); H.render(); H.top(); H.toast('Switched to ' + H.ROLES[r].label); },
+    logout: () => { S.session = null; S.ui.pop = null; H.save(); H.render(); H.top(); },
     reset: () => { H.reset(); S.ui.route = 'dashboard'; H.render(); H.toast('Demo data reset to the starting state'); },
     'read-all': () => { db().notes.forEach(n => n.read = true); H.commit('All notifications marked as read'); },
     note: a => { const n = db().notes.find(x => x.id === a.dataset.id); if (n) { n.read = true; H.save(); H.go(n.go || 'dashboard'); } },
@@ -396,6 +397,6 @@ ${S.role === 'owner' ? `<button class="btn icon hide-sm" data-act="role" data-id
     H.load();
     const h = (location.hash || '').slice(1);
     if (h) S.ui.route = h;
-    H.render();
+    H.render(); H.top();
   };
 })();

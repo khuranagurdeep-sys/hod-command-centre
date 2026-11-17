@@ -47,7 +47,7 @@ ${sel === 'owner' ? '<p class="notice">' + ic('eye') + 'Owner and finance sign-i
 <p class="small muted" style="margin-top:16px">No real accounts exist in this demo. Your changes stay in this browser; Settings → Demo data resets them.</p></div></section></div>`;
   };
   H.A['login-role'] = a => { S.ui.loginRole = a.dataset.id; H.render(); };
-  H.F.login = () => { const r = S.ui.loginRole || 'owner'; S.session = { at: Date.now() }; S.role = r; S.user = H.ROLES[r].user; S.ui.route = 'dashboard'; H.save(); H.render(); H.toast('Welcome, ' + H.first(S.user)); };
+  H.F.login = () => { const r = S.ui.loginRole || 'owner'; S.session = { at: Date.now() }; S.role = r; S.user = H.ROLES[r].user; S.ui.route = 'dashboard'; try { history.replaceState(null, '', '#dashboard'); } catch (e) { /* sandbox */ } H.save(); H.render(); H.top(); H.toast('Welcome, ' + H.first(S.user)); };
 
   // ---------- dashboards ----------
   const greet = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
