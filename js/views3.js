@@ -1,0 +1,319 @@
+/* Views: finance, team, calendar, reports, notifications, documents, automation, settings, blueprint; shared tables; changes; handover */
+(function () {
+  const H = window.HOD, S = H.S, esc = H.esc, db = H.db, ic = H.ic, R = H.R;
+
+  // ---------- shared tables ----------
+  R.snagTable = L => L.length ? `<div class="tw"><table class="stack"><thead><tr><th>Observation</th><th>Project · area</th><th>Trade</th><th>Severity</th><th>Responsible</th><th>Target</th><th>Status</th><th></th></tr></thead><tbody>${L.map(s => `<tr data-k="snag-${s.id}"><td>${esc(s.text)}</td><td class="small">${esc(H.P(s.project).name)} · ${esc(s.area)}</td><td class="small">${esc(s.trade)}</td><td>${H.pill(s.sev)}</td><td class="small">${esc(H.name(s.contractor))}</td><td class="nowrap ${s.status !== 'Closed' && s.due < H.TODAY ? 'bad' : ''}">${H.fd(s.due)}</td><td>${H.pill(s.status)}</td><td>${s.status === 'Ready for reinspection' && S.role !== 'designer' ? `<button class="btn sm" data-act="snag-close" data-id="${s.id}">Accept & close</button>` : s.status !== 'Closed' ? `<button class="btn sm" data-act="snag-next" data-id="${s.id}">Mark fixed</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : R.empty('No observations.');
+  Object.assign(H.A, {
+    'snag-next': a => { const s = db().snags.find(x => x.id === a.dataset.id); s.status = 'Ready for reinspection'; H.log(S.user, `Snag fixed, awaiting reinspection: ${s.text}`, s.project); H.commit('Marked fixed — reinspection task for the site engineer'); },
+    'snag-close': a => { const s = db().snags.find(x => x.id === a.dataset.id); s.status = 'Closed'; H.log(S.user, `Reinspected & closed: ${s.text}`, s.project); H.commit('Reinspected and closed'); }
+  });
+  R.invTable = L => L.length ? `<div class="tw"><table class="stack"><thead><tr><th>Invoice</th><th>Project · milestone</th><th class="num">Total (incl. GST)</th><th class="num">Received</th><th>Due</th><th>Status</th><th>Reminders</th><th></th></tr></thead><tbody>${L.map(i => { const st = H.invStatus(i); return `<tr data-k="inv-${i.id}"><td><a class="lnk" href="#" data-act="drawer" data-type="invoice" data-id="${i.id}">${esc(i.no)}</a><div class="small muted">raised ${H.fd(i.raised)}</div></td><td>${H.plink(i.project)}<div class="small muted">${esc(i.milestone)}</div></td><td class="num">${H.inr(i.total)}</td><td class="num">${i.paid ? H.inr(i.paid) : '—'}</td><td class="nowrap ${st === 'Overdue' ? 'bad' : ''}">${H.fd(i.due)}${st === 'Overdue' ? `<div class="small">${-H.dif(i.due)} days late</div>` : ''}</td><td>${H.pill(st)}</td><td class="small">${i.reminders.length ? i.reminders.length + ' sent' : '—'}</td><td>${st !== 'Paid' && S.role !== 'designer' ? `<div class="row" style="gap:6px;flex-wrap:nowrap">${st === 'Overdue' ? `<button class="btn sm" data-act="modal" data-id="reminder" data-arg='{"inv":"${i.id}"}'>Reminder</button>` : ''}<button class="btn sm" data-act="modal" data-id="payment" data-arg='{"inv":"${i.id}"}'>Record payment</button></div>` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : R.empty('No invoices yet.');
+  R.billTable = L => L.length ? `<div class="tw"><table class="stack"><thead><tr><th>Bill</th><th>Contractor</th><th>Project</th><th class="num">Amount</th><th class="num">Retention</th><th>Status</th><th></th></tr></thead><tbody>${L.map(b => `<tr data-k="bill-${b.id}"><td><b style="font-weight:500">${esc(b.no)}</b><div class="small muted">${esc(b.title)} · ${H.fd(b.date)}</div></td><td class="small">${esc(H.name(b.contractor))}</td><td>${H.plink(b.project)}</td><td class="num">${H.inr(b.amount)}</td><td class="num">${H.inr(b.retention)}</td><td>${H.pill(b.status)}</td><td>${R.billAct(b)}</td></tr>`).join('')}</tbody></table></div>` : R.empty('No bills.');
+  R.billAct = b => {
+    if (b.status === 'Submitted' && ['owner', 'pm'].includes(S.role)) return `<button class="btn sm" data-act="bill-verify" data-id="${b.id}">Verify measurements</button>`;
+    if (b.status === 'PM verified') return S.role === 'owner' ? `<button class="btn sm pri" data-act="bill-approve" data-id="${b.id}">Approve</button>` : '<span class="small muted">Owner approval</span>';
+    if (b.status === 'Approved' && ['owner', 'pm'].includes(S.role)) return `<button class="btn sm" data-act="bill-pay" data-id="${b.id}">Mark paid</button>`;
+    return '';
+  };
+  Object.assign(H.A, {
+    'bill-verify': a => { const b = db().bills.find(x => x.id === a.dataset.id); b.status = 'PM verified'; b.measuredBy = S.user; H.log(S.user, `Verified measurements for ${b.no} (${H.name(b.contractor)})`, b.project); H.notify('Approval', `Contractor bill ${b.no} (${H.lk(b.amount)}) needs your approval`, 'finance', true); H.commit('Measurements verified — sent for owner approval', 'bill-' + b.id); },
+    'bill-approve': a => { const b = db().bills.find(x => x.id === a.dataset.id); b.status = 'Approved'; H.log(S.user, `Approved contractor bill ${b.no} ${H.lk(b.amount)}`, b.project); H.commit(`${b.no} approved — ${H.lk(b.amount - b.retention)} payable after ${b.retention ? '5% retention' : 'deductions'}`, 'bill-' + b.id); },
+    'bill-pay': a => { const b = db().bills.find(x => x.id === a.dataset.id); b.status = 'Paid'; b.paid = H.TODAY; H.log(S.user, `Paid ${b.no} to ${H.name(b.contractor)}`, b.project); H.commit('Marked paid (entry to sync with accounts)'); }
+  });
+  R.crList = L => L.length ? `<div class="grid g2">${L.map(c => `<div class="card" data-k="cr-${c.id}"><div class="hd"><div><div class="small muted">${esc(c.no)} · raised by ${esc(c.raisedBy.toLowerCase())} · ${H.fd(c.date)}</div><h2>${esc(c.title)}</h2></div>${H.pill(c.status)}</div><div class="kv" style="margin-top:4px"><div>Cost impact<b>${c.cost ? '+' + H.lk(c.cost) : 'To estimate'}</b></div><div>Time impact<b>${c.days ? '+' + c.days + ' days' : '—'}</b></div><div>Project<b>${esc(H.P(c.project).name)}</b></div></div>${c.drawings.length ? `<p class="small muted" style="margin-top:8px">Affects: ${c.drawings.map(esc).join(', ')}</p>` : ''}<div class="row" style="margin-top:10px"><button class="btn sm" data-act="drawer" data-type="change" data-id="${c.id}">Open</button>${R.crAct(c)}</div></div>`).join('')}</div>` : R.empty('No change requests.');
+  R.crAct = c => {
+    const pm = ['owner', 'pm'].includes(S.role);
+    if (c.status === 'Raised' && pm) return `<button class="btn sm" data-act="cr-review" data-id="${c.id}">Start review</button>`;
+    if (c.status === 'Under review' && pm) return `<button class="btn sm pri" data-act="cr-estimate" data-id="${c.id}">Estimate impact</button>`;
+    if (c.status === 'Impact estimated') return S.role === 'owner' ? `<button class="btn sm pri" data-act="cr-owner-approve" data-id="${c.id}">Approve & send to client</button>` : '<span class="small muted">Owner approval</span>';
+    if (c.status === 'Awaiting client approval' && pm) return `<button class="btn sm" data-act="cr-client-ok" data-id="${c.id}">Record client approval</button>`;
+    if (c.status === 'Approved' && pm) return `<button class="btn sm" data-act="cr-implemented" data-id="${c.id}">Verify implemented</button>`;
+    return '';
+  };
+  H.Drawer.change = id => {
+    const c = db().changes.find(x => x.id === id);
+    return `<h2 style="font-size:20px">${esc(c.title)}</h2><p class="muted">${esc(c.no)} · ${H.plink(c.project)} · ${H.pill(c.status)}</p>
+<div class="kv"><div>Raised by<b>${esc(c.raisedBy)}</b></div><div>Cost impact<b>${c.cost ? '+' + H.lk(c.cost) : 'To estimate'}</b></div><div>Time impact<b>${c.days ? '+' + c.days + ' days' : '—'}</b></div></div>
+<div class="sect">What it affects</div><p><b>Drawings:</b> ${c.drawings.map(esc).join(', ') || '—'}</p><p><b>Tasks:</b> ${c.tasks.map(esc).join(', ') || '—'}</p><p><b>Materials:</b> ${c.materials.map(esc).join(', ') || '—'}</p>
+<div class="sect">Workflow</div><div class="stepper" style="grid-template-columns:repeat(6,minmax(0,1fr))">${['Raised', 'Under review', 'Impact estimated', 'Awaiting client approval', 'Approved', 'Implemented'].map((s, i, arr) => `<div><i><b style="width:${i <= arr.indexOf(c.status) ? 100 : 0}%"></b></i>${s}</div>`).join('')}</div>
+<div class="row" style="margin-top:12px">${R.crAct(c)}</div>
+<div class="sect">Audit trail</div><div class="timeline">${c.log.slice().reverse().map(l => `<div><b>${H.fd(l.date)}</b><div class="muted small">${esc(l.text)}</div></div>`).join('')}</div>`;
+  };
+  const crlog = (c, t) => c.log.push({ date: H.TODAY, text: t + ' — ' + H.name(S.user) });
+  H.crEstimate = c => {
+    const p = H.P(c.project);
+    if (!c.cost) { c.cost = Math.round((c.title.length * 9000 + 120000) / 1000) * 1000; c.days = Math.max(3, Math.round(c.cost / 60000)); }
+    if (!c.drawings.length) c.drawings = ['Architectural floor plan', 'Furniture layout'];
+    if (!c.tasks.length) c.tasks = db().tasks.filter(t => t.project === c.project && !H.done(t)).slice(0, 2).map(t => t.title);
+    if (!c.materials.length) c.materials = db().materials.filter(m => m.project === c.project).slice(0, 1).map(m => m.item);
+    c.status = 'Impact estimated'; crlog(c, `Impact estimated: +${H.lk(c.cost)}, +${c.days} days`);
+    H.notify('Approval', `Change ${c.no} (${p.name}) estimated at +${H.lk(c.cost)} — needs owner approval`, 'project-' + p.id, true);
+  };
+  H.crApprove = c => {
+    const p = H.P(c.project);
+    c.status = 'Approved'; crlog(c, 'Client approved');
+    p.co = (p.co || 0) + c.cost; p.due = H.addDays(p.due, c.days);
+    db().drawings.filter(x => x.project === p.id && c.drawings.includes(x.title)).forEach(x => { x.rev += 1; x.status = 'Draft'; x.history.push({ rev: 'R' + x.rev, date: H.TODAY, status: 'Draft', by: x.designer, note: `Revision opened for ${c.no}` }); });
+    db().tasks.push({ id: H.uid('t'), title: `Revise drawings for ${c.no}`, project: p.id, assignee: p.designer, status: 'In Progress', priority: 'High', due: H.D(4), created: H.TODAY, updated: H.TODAY, blocked: '', evidence: 0, category: 'Design', who: 'e' });
+    H.auto('r9', `${c.no} approved: budget +${H.lk(c.cost)}, handover moved to ${H.fd(p.due)}; ${c.drawings.length} drawings reopened; contractors notified`);
+    H.log(S.user, `Change ${c.no} approved — contract ${H.lk(p.value + p.co)}, handover ${H.fd(p.due)}`, p.id);
+  };
+  Object.assign(H.A, {
+    'cr-review': a => { const c = db().changes.find(x => x.id === a.dataset.id); c.status = 'Under review'; crlog(c, 'Architect review started'); H.commit('Review started', 'cr-' + c.id); },
+    'cr-estimate': a => { const c = db().changes.find(x => x.id === a.dataset.id); H.crEstimate(c); H.commit('Impact estimated — sent for owner approval', 'cr-' + c.id); },
+    'cr-owner-approve': a => { const c = db().changes.find(x => x.id === a.dataset.id); c.status = 'Awaiting client approval'; crlog(c, 'Owner approved commercials; sent to client for approval'); H.commit('Approved — client asked to accept the change in the portal', 'cr-' + c.id); },
+    'cr-client-ok': a => { const c = db().changes.find(x => x.id === a.dataset.id); H.crApprove(c); H.commit('Change approved — budget, schedule and drawings updated', 'cr-' + c.id); },
+    'cr-implemented': a => { const c = db().changes.find(x => x.id === a.dataset.id); c.status = 'Implemented'; crlog(c, 'Implementation verified at site'); H.commit('Marked implemented'); }
+  });
+  R.docTable = (L, pid) => `<div class="row between" style="margin-bottom:10px"><span class="small muted">Access is per document: internal, client-visible or contractor-visible.</span><button class="btn sm" data-act="modal" data-id="doc" data-arg='${pid ? `{"project":"${pid}"}` : '{}'}'>${ic('upload')}Upload</button></div>${L.length ? `<div class="tw"><table class="stack"><thead><tr><th>Document</th><th>Project</th><th>Type</th><th>Version</th><th>Uploaded</th><th>Access</th><th>Status</th></tr></thead><tbody>${L.map(x => `<tr><td>${ic('doc')} ${esc(x.name)}</td><td>${H.plink(x.project)}</td><td>${esc(x.type)}</td><td>${esc(x.ver)}</td><td class="small">${esc(H.name(x.by))} · ${H.fd(x.date)}</td><td class="small">${esc(x.access)}</td><td>${H.pill(x.status, x.status === 'Current' ? 'good' : 'warn')}</td></tr>`).join('')}</tbody></table></div>` : R.empty('No documents.')}`;
+
+  // ---------- finance ----------
+  H.V.finance = () => {
+    const d = db(), f = H.fin(), tab = S.ui.tab.fin || 'recv', own = S.role === 'owner';
+    const cash = R.cashflow();
+    const tabs = [['recv', 'Receivables', d.invoices.filter(i => H.invOut(i)).length], ['pay', 'Payments'], ['bills', 'Contractor bills', d.bills.filter(b => b.status !== 'Paid').length], ['cash', 'Cash-flow forecast'], ['ms', 'Billing milestones']].concat(own ? [['profit', 'Profitability']] : []);
+    let body = '';
+    if (tab === 'recv') body = R.invTable(d.invoices.filter(i => H.invOut(i)).sort((a, b) => a.due.localeCompare(b.due))) + `<p class="small muted" style="margin-top:8px">A payment counts as received only after it is matched to a bank entry (reconciliation) or confirmed by the payment gateway — never because a reminder was sent.</p>`;
+    if (tab === 'pay') body = `<div class="tw"><table class="stack"><thead><tr><th>Date</th><th>Project</th><th>Invoice</th><th class="num">Amount</th><th>Mode · reference</th><th>Source</th><th>Status</th><th></th></tr></thead><tbody>${d.payments.slice().sort((a, b) => b.date.localeCompare(a.date)).map(x => { const i = d.invoices.find(v => v.id === x.invoice); return `<tr data-k="pay-${x.id}"><td class="nowrap">${H.fd(x.date)}</td><td>${H.plink(x.project)}</td><td class="small">${i ? esc(i.no) : '—'}</td><td class="num">${H.inr(x.amount)}</td><td class="small">${esc(x.mode)} · ${esc(x.ref)}</td><td class="small">${esc(x.source)}</td><td>${x.verified ? H.pill('Verified', 'good') : H.pill('Unverified', 'warn')}</td><td>${!x.verified && ['owner', 'pm'].includes(S.role) ? `<button class="btn sm pri" data-act="pay-verify" data-id="${x.id}">Match bank entry</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>`;
+    if (tab === 'bills') body = R.billTable(d.bills.slice().sort((a, b) => ['Submitted', 'PM verified', 'Approved', 'Paid'].indexOf(a.status) - ['Submitted', 'PM verified', 'Approved', 'Paid'].indexOf(b.status))) + `<p class="small muted" style="margin-top:8px">Bill flow: contractor submits → site engineer verifies measurements → owner approves → accounts pays (retention held 5%).</p>`;
+    if (tab === 'cash') body = `<div class="card"><div class="hd"><h2>Next 8 weeks: expected inflows vs committed outflows</h2><div class="legend"><span><i style="background:#2f8f5b"></i>Inflow</span><span><i style="background:#b0412e"></i>Outflow</span></div></div>${H.chart('ch-cash', { type: 'bars', label: 'Cash-flow forecast', labels: cash.map(w => w.label), series: [{ name: 'Inflow', values: cash.map(w => w.in), color: '#2f8f5b' }, { name: 'Outflow', values: cash.map(w => w.out), color: '#b0412e' }], fmt: v => (v / 1e5).toFixed(0) + 'L' }, 260)}<p class="small muted" style="margin-top:8px">Inflows: invoices by due date plus upcoming milestones at 80% likelihood. Outflows: approved and verified contractor bills, POs issued and monthly payroll & overheads (estimated ₹18 L).</p></div>`;
+    if (tab === 'ms') body = `<div class="tw"><table><thead><tr><th>Project</th><th>Next milestone</th><th class="num">Amount (excl. GST)</th><th>Expected</th><th></th></tr></thead><tbody>${H.active().map(p => ({ p, m: (p.milestones || []).find(m => !m.invoiced) })).filter(x => x.m).sort((a, b) => a.m.expected.localeCompare(b.m.expected)).map(({ p, m }) => `<tr><td>${H.plink(p.id)}</td><td>${esc(m.name)}</td><td class="num">${H.inr(m.amount)}</td><td class="nowrap ${m.expected < H.TODAY ? 'warn' : ''}">${H.fd(m.expected)} <span class="small muted">${H.rel(m.expected)}</span></td><td><button class="btn sm" data-act="modal" data-id="invoice" data-arg='{"project":"${p.id}"}'>Raise invoice</button></td></tr>`).join('')}</tbody></table></div>`;
+    if (tab === 'profit' && own) body = `<div class="tw"><table class="stack"><thead><tr><th>Project</th><th class="num">Revenue (incl. changes)</th><th class="num">Budget cost</th><th class="num">Cost to date</th><th class="num">Forecast cost</th><th class="num">Margin</th><th class="num">Margin %</th></tr></thead><tbody>${H.active().map(p => { const m = H.margin(p); return `<tr><td>${H.plink(p.id)}</td><td class="num">${H.lk(m.rev)}</td><td class="num">${H.lk(p.budgetCost)}</td><td class="num">${H.lk(H.costToDate(p))}</td><td class="num">${H.lk(m.fc)}</td><td class="num">${H.lk(m.m)}</td><td class="num ${m.pct < 0.2 ? 'warn' : ''}">${Math.round(m.pct * 100)}%</td></tr>`; }).join('')}</tbody></table></div><p class="small muted" style="margin-top:8px">Visible to the owner only. Costs come from approved bills, POs and site consumption; sample figures in this demo.</p>`;
+    return `<div class="pagehead"><div><h1>Money: ${H.lk(f.overdue)} overdue from clients, ${H.lk(f.vendorDue.reduce((s, b) => s + b.amount - b.retention, 0))} due to contractors</h1><p>Project-wise billing, collections, contractor liabilities and cash flow. GST-ready invoice fields; sync with Tally or Zoho Books in production.</p></div>${S.role !== 'designer' ? `<button class="btn pri" data-act="modal" data-id="invoice">${ic('plus')}Raise invoice</button>` : ''}</div>
+${R.kpis([['Contract value (active)', H.lk(f.contract), `excl. GST · incl. ${H.lk(f.coValue)} changes`], ['Received (verified)', H.lk(f.received), `of ${H.lk(f.invoiced)} invoiced`], ['Outstanding', H.lk(f.outstanding)], ['Overdue', H.lk(f.overdue), '', null, 'alert'], ['Unverified payments', f.unverified.length, 'need bank match', null, f.unverified.length ? 'warnk' : ''], ['Bills to verify/approve', f.billsPending.length, H.lk(f.billsPending.reduce((s, b) => s + b.amount, 0))]])}
+<div style="margin-top:16px">${R.tabs('fin', tabs, tab)}${body}</div>`;
+  };
+  R.cashflow = () => {
+    const d = db(), w = [];
+    for (let k = 0; k < 8; k++) { const a = H.D(k * 7), b = H.D(k * 7 + 6); w.push({ label: H.fd(a), a, b, in: 0, out: k % 4 === 0 ? 18e5 : 0 }); }
+    const put = (date, amt, key) => { const i = Math.max(0, Math.min(7, Math.floor(Math.max(0, H.dif(date)) / 7))); w[i][key] += amt; };
+    d.invoices.forEach(i => { const o = H.invOut(i); if (o) put(i.due < H.TODAY ? H.D(10) : i.due, o, 'in'); });
+    H.active().forEach(p => (p.milestones || []).filter(m => !m.invoiced && H.dif(m.expected) <= 50).forEach(m => put(H.addDays(m.expected, 15), m.amount * 1.18 * 0.8, 'in')));
+    d.bills.filter(b => ['PM verified', 'Approved'].includes(b.status)).forEach(b => put(b.due < H.TODAY ? H.TODAY : b.due, b.amount - b.retention, 'out'));
+    d.bills.filter(b => b.status === 'Submitted').forEach(b => put(H.addDays(b.due, 7), b.amount - b.retention, 'out'));
+    d.materials.filter(m => ['PO issued', 'In transit'].includes(m.stage)).forEach(m => put(H.addDays(m.needBy, 15), m.value, 'out'));
+    return w;
+  };
+  H.Drawer.invoice = id => {
+    const i = db().invoices.find(x => x.id === id), p = H.P(i.project), c = H.CL(p.client), pays = db().payments.filter(x => x.invoice === id);
+    return `<div id="invdoc-${i.id}"><div class="row between"><div>${H.logo(170)}</div><div style="text-align:right"><h2>Tax invoice</h2><div class="small muted">${esc(i.no)}</div></div></div>
+<div class="grid g2" style="margin-top:14px"><div class="small"><b>Hands On Design</b><br>A-4/35, First Floor, Paschim Vihar<br>New Delhi 110063<br>GSTIN: to be added from records</div><div class="small"><b>Bill to</b><br>${esc(c.name)}<br>${esc(p.location)}<br>${c.gstin ? 'GSTIN ' + esc(c.gstin) : 'Unregistered (B2C)'}</div></div>
+<div class="tw" style="margin-top:12px"><table><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody><tr><td>${esc(p.name)} — ${esc(i.milestone)} (${esc(p.service)})<div class="small muted">SAC 998392 · Place of supply: Delhi (sample)</div></td><td class="num">${H.inr(i.taxable)}</td></tr><tr><td>CGST 9%</td><td class="num">${H.inr(i.gst / 2)}</td></tr><tr><td>SGST 9%</td><td class="num">${H.inr(i.gst / 2)}</td></tr><tr><td><b>Total</b></td><td class="num"><b>${H.inr(i.total)}</b></td></tr></tbody></table></div>
+<div class="kv"><div>Raised<b>${H.fd(i.raised)}</b></div><div>Due<b>${H.fd(i.due)}</b></div><div>Received<b>${H.inr(i.paid)}</b></div><div>Status<b>${H.invStatus(i)}</b></div></div></div>
+<div class="sect">Payments</div>${pays.length ? pays.map(x => `<p class="small">${H.fd(x.date)} · ${H.inr(x.amount)} · ${esc(x.mode)} ${esc(x.ref)} · ${x.verified ? '<span class="good">verified</span>' : '<span class="warn">awaiting bank match</span>'}</p>`).join('') : '<p class="muted small">None yet.</p>'}
+<div class="sect">Reminders</div>${i.reminders.length ? i.reminders.map(r => `<p class="small">${H.fd(r.date)} · ${esc(r.channel)} · ${esc(r.note)}</p>`).join('') : '<p class="muted small">None sent.</p>'}
+<div class="row" style="margin-top:12px">${H.invOut(i) && S.role !== 'designer' ? `<button class="btn" data-act="modal" data-id="reminder" data-arg='{"inv":"${i.id}"}'>Send reminder</button><button class="btn pri" data-act="modal" data-id="payment" data-arg='{"inv":"${i.id}"}'>Record payment</button>` : ''}<button class="btn" data-act="copy" data-id="invdoc-${i.id}">${ic('copy')}Copy</button></div>`;
+  };
+  H.verifyPayment = id => { const x = db().payments.find(p => p.id === id); x.verified = true; x.verifiedBy = S.user === 'e0' ? 'e12' : S.user; x.source = x.source + ' → matched to bank statement'; const i = db().invoices.find(v => v.id === x.invoice); if (i) i.paid = Math.min(i.total, i.paid + x.amount); H.log('e12', `Verified ${H.inr(x.amount)} against bank statement`, x.project); return i; };
+  H.A['pay-verify'] = a => { const i = H.verifyPayment(a.dataset.id); H.commit(i && H.invStatus(i) === 'Paid' ? `${i.no} is now fully paid` : 'Payment verified against bank statement', 'pay-' + a.dataset.id); };
+
+  // ---------- team ----------
+  H.V.team = () => {
+    const d = db(), w = H.workload(), over = w.filter(x => x.util > 110), under = w.filter(x => x.util < 50 && x.e.loc !== 'Leave');
+    const rec = [];
+    over.forEach(o => { const peer = under.find(u => u.e.dept === o.e.dept && u.e.kind === o.e.kind) || under.find(u => u.e.dept === o.e.dept); if (peer) { const t = d.tasks.find(t => t.assignee === o.e.id && !H.done(t) && t.status === 'Not Started'); if (t) rec.push({ from: o.e, to: peer.e, t }); } });
+    const ontime = e => { const ts = d.tasks.filter(t => t.assignee === e.id && H.done(t)); if (!ts.length) return null; return Math.round(ts.filter(t => !t.done || t.done <= t.due).length / ts.length * 100); };
+    return `<div class="pagehead"><div><h1>Team: ${over.length} overloaded, ${under.length} with spare capacity</h1><p>Who is in the office, on site or on leave; open work, overdue tasks and how promptly each person updates the system. Performance uses timeliness, quality and rework — not GPS or screen time.</p></div></div>
+${rec.length ? `<div class="card" style="margin-bottom:16px" data-k="rebalance"><h2>Suggested rebalancing</h2><div class="list">${rec.map(r => `<div>${H.av(r.from.id)}<div class="li-main"><div class="t">Move “${esc(r.t.title)}” (${esc(H.P(r.t.project).name)}) from ${esc(r.from.name)} to ${esc(r.to.name)}</div><div class="s">${esc(r.from.name.split(' ')[0])} is at ${w.find(x => x.e === r.from).util}% load; ${esc(r.to.name.split(' ')[0])} at ${w.find(x => x.e === r.to).util}%</div></div><button class="btn sm pri" data-act="reassign" data-id="${r.t.id}" data-v="${r.to.id}">Reassign</button></div>`).join('')}</div></div>` : ''}
+<div class="tw"><table class="stack"><thead><tr><th>Person</th><th>Today</th><th class="num">Open</th><th class="num">Overdue</th><th style="min-width:140px">Load</th><th class="num">On time</th><th>Last update</th><th></th></tr></thead><tbody>${w.map(x => {
+      const last = d.tasks.filter(t => t.assignee === x.e.id).reduce((m, t) => t.updated > m ? t.updated : m, '2000-01-01');
+      const ot = ontime(x.e);
+      return `<tr><td>${H.who(x.e.id)}<div class="small muted" style="margin-left:38px">${esc(x.e.role)}</div></td><td>${H.pill(x.e.loc, x.e.loc === 'Leave' ? 'warn' : x.e.loc === 'Site' ? 'info' : '')}</td><td class="num">${x.open}</td><td class="num ${x.od ? 'bad' : ''}">${x.od || '—'}</td><td><div class="row" style="gap:8px;flex-wrap:nowrap">${R.prog(Math.min(100, x.util), null, x.util > 110 ? 'bad' : x.util < 50 ? 'good' : '')}<span class="num small">${x.util}%</span></div></td><td class="num">${ot == null ? '—' : ot + '%'}</td><td class="small ${last !== '2000-01-01' && H.dif(last) <= -5 ? 'warn' : ''}">${last === '2000-01-01' ? '—' : H.rel(last)}</td><td><button class="btn sm" data-act="drawer" data-type="employee" data-id="${x.e.id}">Open</button></td></tr>`;
+    }).join('')}</tbody></table></div>
+<div class="grid g2" style="margin-top:16px"><div class="card"><h2>Leave & availability</h2><div class="list">${d.leaves.map(l => `<div>${H.av(l.who)}<div class="li-main"><div class="t">${esc(H.name(l.who))}</div><div class="s">${esc(l.type)} · ${H.fd(l.from)} – ${H.fd(l.to)}</div></div></div>`).join('')}</div></div>
+<div class="card"><h2>How performance is measured</h2><ul style="margin:0;padding-left:18px"><li>Timeliness: tasks closed by due date</li><li>Quality: revisions and snags traced to the person</li><li>Reporting discipline: status updated at least every 3 working days</li><li>Client feedback after milestones</li></ul><p class="small muted" style="margin-top:8px">Location check-in is used only to confirm site visits, with the employee’s consent.</p></div></div>`;
+  };
+  H.A.reassign = a => { const t = db().tasks.find(x => x.id === a.dataset.id); const from = t.assignee; t.assignee = a.dataset.v; (t.hist = t.hist || []).unshift({ date: H.TODAY, text: `Reassigned from ${H.name(from)} to ${H.name(a.dataset.v)}`, by: S.user }); H.commit(`Reassigned to ${H.name(a.dataset.v)}`); };
+  H.Drawer.employee = id => {
+    const e = H.E(id), x = H.workload().find(w => w.e.id === id);
+    return `<div class="row">${H.av(id, true)}<div><h2 style="font-size:20px">${esc(e.name)}</h2><p class="muted">${esc(e.role)} · ${esc(e.dept)} · ${esc(e.email)}</p></div></div>
+<div class="kv"><div>Today<b>${esc(e.loc)}</b></div><div>Open tasks<b>${x ? x.open : 0}</b></div><div>Overdue<b class="${x && x.od ? 'bad' : ''}">${x ? x.od : 0}</b></div><div>Load<b>${x ? x.util : 0}%</b></div></div>
+<div class="sect">Employee dashboard</div>${H.R.myWork(id).replace(/<div class="pagehead">[\s\S]*?<\/div><button[\s\S]*?<\/button><\/div>/, '')}`;
+  };
+
+  // ---------- calendar ----------
+  H.V.calendar = () => {
+    const d = db(), off = +(S.ui.f.wk || 0);
+    const start = new Date(H.T0); start.setDate(start.getDate() - ((start.getDay() + 6) % 7) + off * 7);
+    const days = Array.from({ length: 7 }, (_, i) => { const x = new Date(start); x.setDate(x.getDate() + i); return H.iso(x); });
+    const items = day => [].concat(
+      d.visits.filter(v => v.date === day).map(v => ({ t: v.time, c: v.status === 'Completed' ? 'good' : 'info', l: 'Site visit', x: H.P(v.project).name + ' · ' + H.first(v.by), act: v.status === 'Completed' ? `data-act="drawer" data-type="visit" data-id="${v.id}"` : '' })),
+      d.events.filter(e => e.date === day).map(e => ({ t: e.time, c: 'gold', l: e.type, x: e.title, act: '' })),
+      d.tasks.filter(t => t.due === day && !H.done(t) && t.priority === 'High').map(t => ({ t: '—', c: 'bad', l: 'Deadline', x: t.title + ' · ' + H.P(t.project).name, act: `data-act="drawer" data-type="task" data-id="${t.id}"` })),
+      H.active().filter(p => p.due === day).map(p => ({ t: '—', c: 'warn', l: 'Handover', x: p.name, act: `data-go="project-${p.id}"` }))
+    ).sort((a, b) => a.t.localeCompare(b.t));
+    return `<div class="pagehead"><div><h1>Calendar: week of ${H.fd(days[0])}</h1><p>Site visits, client meetings, internal reviews, critical deadlines and handovers in one place. Syncs with Google or Outlook calendars in production.</p></div><div class="row"><button class="btn" data-act="filt" data-k="wk" data-v="${off - 1}">← Previous</button><button class="btn" data-act="filt" data-k="wk" data-v="0">This week</button><button class="btn" data-act="filt" data-k="wk" data-v="${off + 1}">Next →</button><button class="btn pri" data-act="modal" data-id="meeting">${ic('plus')}Meeting</button></div></div>
+<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">${days.map(day => `<div class="card flat" style="padding:12px;${day === H.TODAY ? 'border-color:var(--gold2);box-shadow:inset 0 3px 0 var(--gold2)' : ''}"><div class="row between"><b>${new Date(day + 'T00:00').toLocaleDateString('en-IN', { weekday: 'short' })} ${H.fd(day)}</b>${day === H.TODAY ? '<span class="pill gold">Today</span>' : ''}</div><div class="stack" style="margin-top:8px">${items(day).map(i => `<div ${i.act} style="${i.act ? 'cursor:pointer;' : ''}border-left:3px solid var(--${i.c === 'gold' ? 'gold2' : i.c});padding:4px 8px;background:var(--panel2);border-radius:6px"><div class="small muted">${i.t !== '—' ? i.t + ' · ' : ''}${esc(i.l)}</div><div class="small" style="font-weight:500">${esc(i.x)}</div></div>`).join('') || '<div class="small muted">Free</div>'}</div></div>`).join('')}</div>`;
+  };
+
+  // ---------- reports ----------
+  H.V.reports = () => {
+    const d = db(), weeks = [];
+    for (let k = 7; k >= 0; k--) { const a = H.D(-k * 7 - 6), b = H.D(-k * 7); weeks.push({ l: H.fd(a), done: d.tasks.filter(t => H.done(t) && t.done && t.done >= a && t.done <= b).length + (k > 3 ? 9 + (k * 7) % 5 : 0), visits: d.visits.filter(v => v.status === 'Completed' && v.date >= a && v.date <= b).length }); }
+    const closed = d.tasks.filter(H.done), ontime = Math.round(closed.filter(t => !t.done || t.done <= t.due).length / Math.max(1, closed.length) * 100);
+    const revs = (d.drawings.reduce((s, x) => s + x.rev, 0) / d.drawings.length).toFixed(1);
+    const billed = d.invoices.filter(i => i.due < H.TODAY).reduce((s, i) => s + i.total, 0), coll = d.invoices.filter(i => i.due < H.TODAY).reduce((s, i) => s + i.paid, 0);
+    const funnel = ['New Lead', 'Qualified', 'Consultation', 'Site Visit', 'Proposal', 'Negotiation', 'Won'].map((s, i, arr) => [s, d.leads.filter(l => arr.indexOf(l.stage) >= i).length]);
+    const pj = S.ui.f.rproj || 'all';
+    const league = d.contractors.filter(c => c.kind === 'Contractor').map(c => ({ c, s: H.conStats(c) })).filter(x => x.s.ts.length).sort((a, b) => b.s.score - a.s.score);
+    return `<div class="pagehead"><div><h1>Reports: ${ontime}% of tasks closed on time, ${Math.round(coll / Math.max(1, billed) * 100)}% of due billing collected</h1><p>Operational analytics and one-click progress reports for clients and the owner.</p></div></div>
+${R.kpis([['On-time task completion', ontime + '%'], ['Avg revisions per drawing', revs], ['Collection efficiency', Math.round(coll / Math.max(1, billed) * 100) + '%', 'of billing past due date'], ['Site visits (last 4 weeks)', d.visits.filter(v => v.status === 'Completed' && v.date >= H.D(-28)).length], ['Open snags', d.snags.filter(s => s.status !== 'Closed').length], ['Lead win rate', Math.round(d.leads.filter(l => l.stage === 'Won').length / Math.max(1, d.leads.filter(l => ['Won', 'Lost'].includes(l.stage)).length) * 100) + '%']])}
+<div class="grid g2" style="margin-top:16px"><div class="card"><div class="hd"><h2>Work closed and site visits per week</h2><div class="legend"><span><i style="background:#c9a14a"></i>Tasks closed</span><span><i style="background:#57524a"></i>Site visits</span></div></div>${H.chart('ch-wk', { type: 'line', label: 'Weekly throughput', labels: weeks.map(w => w.l), series: [{ name: 'Tasks closed', values: weeks.map(w => w.done), color: '#c9a14a', fill: true }, { name: 'Site visits', values: weeks.map(w => w.visits), color: '#57524a' }] })}</div>
+<div class="card"><h2>Lead conversion funnel</h2>${R.hbars(funnel, v => v)}</div></div>
+<div class="grid g2" style="margin-top:16px"><div class="card"><h2>Contractor league table</h2><div class="tw"><table><thead><tr><th>Contractor</th><th class="num">Score</th><th class="num">Missed</th><th class="num">Snags</th></tr></thead><tbody>${league.map(({ c, s }) => `<tr><td>${esc(c.name)}<div class="small muted">${esc(c.trade)}</div></td><td class="num">${s.score}</td><td class="num ${s.missed ? 'bad' : ''}">${s.missed}</td><td class="num">${s.snags}</td></tr>`).join('')}</tbody></table></div></div>
+<div class="card"><div class="hd"><h2>Weekly progress report</h2>${R.sel('rproj', [['all', 'All active projects']].concat(H.active().map(p => [p.id, p.name])), pj, 'Report project')}</div><div id="wkrep" class="small" style="max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:12px">${H.weeklyReport(pj === 'all' ? null : pj)}</div><div class="row" style="margin-top:10px"><button class="btn sm" data-act="copy" data-id="wkrep">${ic('copy')}Copy report</button><span class="small muted">Sending to clients needs approval and an email/WhatsApp integration.</span></div></div></div>`;
+  };
+  H.weeklyReport = pid => {
+    const d = db(), ps = pid ? [H.P(pid)] : H.active();
+    return `<b>Hands On Design — weekly progress report, week ending ${H.fdy(H.TODAY)}</b>` + ps.map(p => {
+      const done = d.tasks.filter(t => t.project === p.id && H.done(t) && t.done && H.dif(t.done) >= -7).map(t => t.title);
+      const next = d.tasks.filter(t => t.project === p.id && !H.done(t) && H.dif(t.due) <= 7).map(t => t.title);
+      const r = H.risk(p), od = d.invoices.filter(i => i.project === p.id && H.invStatus(i) === 'Overdue');
+      const vis = d.visits.filter(v => v.project === p.id && v.status === 'Completed' && H.dif(v.date) >= -7).length;
+      return `<p style="margin-top:12px"><b>${esc(p.name)}</b> (${esc(H.stageName(p.stage))}) — ${p.progress}% complete, ${H.health(p).replace('-', ' ')}; handover ${H.fdy(p.due)}${r.slip > 0 ? `, forecast +${r.slip} days` : ''}.<br>Completed this week: ${done.slice(0, 4).map(esc).join('; ') || 'no tasks closed'}.<br>Planned next 7 days: ${next.slice(0, 4).map(esc).join('; ') || '—'}.<br>Site visits this week: ${vis}. ${r.reasons.length ? 'Risks: ' + esc(r.reasons.join('; ')) + '.' : 'No open risks.'}${od.length ? ` Pending payment: ${od.map(i => esc(i.no)).join(', ')}.` : ''}</p>`;
+    }).join('');
+  };
+  H.A.weekly = a => { S.ui.f.rproj = a.dataset.id; H.go('reports'); };
+
+  // ---------- notifications ----------
+  H.V.notifications = () => {
+    const d = db(), f = S.ui.f.nk || 'all';
+    const L = d.notes.filter(n => f === 'all' || (f === 'action' ? n.action && !n.read : n.kind === f));
+    return `<div class="pagehead"><div><h1>Notifications: ${d.notes.filter(n => n.action && !n.read).length} need action</h1><p>Frequency and channels are configurable so nobody is flooded; urgent site and safety issues always ring through.</p></div><div class="row"><button class="btn" data-act="read-all">Mark all read</button><button class="btn" data-go="configuration">Settings</button></div></div>
+<div class="row" style="margin-bottom:12px">${R.seg('nk', [['all', 'All'], ['action', 'Needs action'], ['Approval', 'Approvals'], ['Payment', 'Payments'], ['Overdue', 'Overdue'], ['Site', 'Site'], ['Client', 'Client'], ['Material', 'Material'], ['System', 'System']], f)}</div>
+<div class="card">${L.length ? `<div class="list">${L.map(n => `<a href="#${n.go}" class="li" data-act="note" data-id="${n.id}"><span class="pill ${n.action ? 'bad' : ''}">${esc(n.kind)}</span><div class="li-main"><div class="t" style="${n.read ? 'font-weight:400' : ''}">${esc(n.text)}</div><div class="s">${H.rel(n.date)}${n.read ? '' : ' · unread'}</div></div>${ic('arrow')}</a>`).join('')}</div>` : R.empty('All clear.')}</div>`;
+  };
+
+  // ---------- documents ----------
+  H.V.documents = () => {
+    const d = db(), pj = S.ui.f.docp || 'all', t = S.ui.f.doct || 'all';
+    const L = d.docs.filter(x => (pj === 'all' || x.project === pj) && (t === 'all' || x.type === t));
+    return `<div class="pagehead"><div><h1>Documents</h1><p>${d.docs.length} contracts, proposals, BOQs, approvals, warranties and manuals — versioned, with per-document access. Drawings live in Drawings & Approvals.</p></div></div>
+<div class="row" style="margin-bottom:12px">${R.sel('docp', R.projOpts(), pj, 'Project')}${R.sel('doct', [['all', 'All types']].concat([...new Set(d.docs.map(x => x.type))].map(x => [x, x])), t, 'Type')}</div>${R.docTable(L, pj === 'all' ? null : pj)}`;
+  };
+
+  // ---------- automation ----------
+  H.V.automation = () => {
+    const d = db();
+    return `<div class="pagehead"><div><h1>Automation: ${d.rules.filter(r => r.on).length} rules running, ${d.autolog.filter(a => a.status === 'Failed').length} failure to retry</h1><p>Every repetitive follow-up is a rule you can switch off, tune or put behind an approval gate. High-impact actions (money, scope, dates) always wait for a human.</p></div><button class="btn pri" data-act="modal" data-id="rule">${ic('plus')}New rule</button></div>
+<div class="grid g2">${d.rules.map(r => `<div class="card" data-k="rule-${r.id}"><div class="hd"><h2 style="font-size:15px">${esc(r.name)}</h2><label class="switch" title="On / off"><input type="checkbox" ${r.on ? 'checked' : ''} data-chg="rule-on" data-id="${r.id}" aria-label="Rule on"><span></span></label></div><p class="small"><b>When:</b> ${esc(r.trigger)}</p><p class="small" style="margin-top:4px"><b>Then:</b> ${esc(r.action)}</p><div class="row small muted" style="margin-top:10px"><span>${r.runs} runs</span>${r.fails ? `<span class="bad">${r.fails} failed</span>` : ''}${r.esc ? `<span>Escalate after <input class="in" style="width:56px;min-height:30px;padding:2px 6px;display:inline" type="number" min="1" max="30" value="${r.esc}" data-chg="rule-esc" data-id="${r.id}" aria-label="Escalation days"> days</span>` : ''}<label class="chk" style="min-height:0"><input type="checkbox" ${r.gate ? 'checked' : ''} data-chg="rule-gate" data-id="${r.id}"> Approval gate</label><button class="btn sm" data-act="rule-test" data-id="${r.id}">Test run</button></div></div>`).join('')}</div>
+<div class="sect">Automation log</div><div class="tw"><table class="stack"><thead><tr><th>When</th><th>Rule</th><th>What happened</th><th>Result</th><th></th></tr></thead><tbody>${d.autolog.slice(0, 40).map(l => `<tr><td class="nowrap">${H.fd(l.date)} ${l.time}</td><td class="small">${esc((d.rules.find(r => r.id === l.rule) || {}).name || l.rule)}</td><td>${esc(l.text)}</td><td>${H.pill(l.status)}</td><td>${l.status === 'Failed' ? `<button class="btn sm" data-act="auto-retry" data-id="${l.id}">Retry via email</button>` : l.status === 'Awaiting approval' ? `<button class="btn sm" data-act="auto-approve" data-id="${l.id}">Approve</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+  };
+  H.Cg['rule-on'] = el => { const r = db().rules.find(x => x.id === el.dataset.id); r.on = el.checked; H.commit(`${r.name}: ${r.on ? 'on' : 'off'}`); };
+  H.Cg['rule-gate'] = el => { const r = db().rules.find(x => x.id === el.dataset.id); r.gate = el.checked; H.commit(`Approval gate ${r.gate ? 'added' : 'removed'}`); };
+  H.Cg['rule-esc'] = el => { const r = db().rules.find(x => x.id === el.dataset.id); r.esc = Math.max(1, +el.value || 1); H.commit(`Escalation set to ${r.esc} days`); };
+  Object.assign(H.A, {
+    'rule-test': a => { const r = db().rules.find(x => x.id === a.dataset.id); db().autolog.unshift({ id: H.uid('al'), rule: r.id, text: 'Test run on sample record — no messages sent', status: 'Success', date: H.TODAY, time: new Date().toTimeString().slice(0, 5) }); H.commit('Test run logged'); },
+    'auto-retry': a => { const l = db().autolog.find(x => x.id === a.dataset.id); l.status = 'Success'; l.text += ' — retried by email instead'; const r = db().rules.find(x => x.id === l.rule); if (r && r.fails) r.fails--; H.commit('Retried by email'); },
+    'auto-approve': a => { const l = db().autolog.find(x => x.id === a.dataset.id); l.status = 'Success'; l.text = l.text.replace('awaiting accounts approval', 'approved and sent'); H.commit('Approved and sent'); }
+  });
+
+  // ---------- settings ----------
+  H.V.configuration = () => {
+    const tab = S.ui.tab.set || 'company', c = db().company;
+    const MODS = ['Executive dashboard', 'Leads & CRM', 'Projects', 'Drawings & approvals', 'Tasks', 'Site visits', 'Contractors', 'Procurement', 'Finance (receivables)', 'Margins & profitability', 'Team & HR', 'Automation', 'Settings'];
+    const RL = [['Owner', 'FFFFFFFFFFFFF'], ['Project manager', 'VFFFFFFFV-VF-'], ['Designer / office', 'M-VFFFV-----'.padEnd(13, '-')], ['Site supervisor', '--VVFFV-----'.padEnd(13, '-')], ['Client', '--O-OO--O----'], ['Contractor', '--O--OO-O----']];
+    const lab = { F: 'Full', V: 'View', M: 'Own work', O: 'Own records only', '-': '—' };
+    let body = '';
+    if (tab === 'company') body = `<div class="card"><h2>${esc(c.name)}</h2><p class="muted">${esc(c.tagline)}</p><div class="kv"><div>Founded<b>${c.founded}</b></div><div>Founder<b>${esc(c.founder)}</b></div><div>Phone<b style="white-space:normal">${esc(c.phone)}</b></div><div>Email<b>${esc(c.email)}</b></div><div>Hours<b style="white-space:normal">${esc(c.hours)}</b></div><div>Website<b>${esc(c.web)}</b></div></div><p style="margin-top:12px">${esc(c.address)}</p><p class="small muted" style="margin-top:6px">Services: ${c.services.map(esc).join(', ')}. ${esc(c.stats)}.</p><p class="small muted" style="margin-top:6px">Source: handsondesign.in and its company presentation. Logo traced from the company presentation published on the website.</p></div>`;
+    if (tab === 'roles') body = `<div class="tw"><table><thead><tr><th>Module</th>${RL.map(r => `<th>${r[0]}</th>`).join('')}</tr></thead><tbody>${MODS.map((m, i) => `<tr><td>${m}</td>${RL.map(r => `<td class="small">${lab[r[1][i]] || '—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div><p class="small muted" style="margin-top:8px">Enforced on the server in production (row-level security by project and role). MFA required for owner and accounts.</p>`;
+    if (tab === 'notify') body = `<div class="card"><div class="fgrid">${[['Task reminders', 'Once a day at 9:30 am'], ['Client updates', 'At milestones + weekly summary'], ['Escalations to owner', 'Daily digest at 7 pm'], ['Contractor reminders', 'Same day, WhatsApp'], ['Payment reminders', 'Every 7 days after due date'], ['Quiet hours', '9 pm – 8 am (except safety)']].map(([l, v], i) => `<div><label class="f" for="nt${i}">${l}</label><input class="in" id="nt${i}" value="${v}"></div>`).join('')}</div><p class="small muted" style="margin-top:10px">Emergency path: safety incidents and site stoppages trigger a phone call to the PM and owner — calls are not eliminated for urgent matters.</p></div>`;
+    if (tab === 'integrations') body = `<div class="tw"><table class="stack"><thead><tr><th>Integration</th><th>Used for</th><th>Status in this demo</th></tr></thead><tbody>${[['WhatsApp Business API (via an approved provider)', 'Enquiries, client approvals, reminders, contractor alerts', 'Needs Meta-verified business account and approved templates'], ['Email (SMTP / transactional email)', 'Reports, invoices, reminders', 'Needs credentials'], ['SMS (DLT-registered sender)', 'OTP, critical alerts', 'Needs DLT registration'], ['Instagram enquiries', 'DM and lead-form capture', 'Via Meta APIs where officially supported'], ['Cloud telephony', 'Call logging, click-to-call, missed-call leads', 'Needs provider account'], ['Google / Outlook calendar', 'Meetings and site visits', 'Needs OAuth setup'], ['Tally Prime / Zoho Books', 'Invoices, receipts, bank reconciliation', 'Needs connector & ledger mapping'], ['Payment gateway & UPI', 'Online client payments with auto-confirmation', 'Needs merchant account'], ['e-Sign (Aadhaar / DSC)', 'Proposals, contracts, change orders', 'Needs e-sign provider'], ['Maps', 'Site location and visit check-in', 'Needs API key']].map(([a, b, c2]) => `<tr><td><b style="font-weight:500">${a}</b></td><td class="small">${b}</td><td>${H.pill(c2, 'warn')}</td></tr>`).join('')}</tbody></table></div>`;
+    if (tab === 'security') body = `<div class="grid g2"><div class="card"><h2>Security</h2><ul style="margin:0;padding-left:18px"><li>Role-based access, project-level permissions</li><li>MFA for owner and finance</li><li>Encryption in transit (TLS) and at rest</li><li>Signed, expiring links for drawings and documents</li><li>Full audit log of approvals, payments and changes</li><li>Daily backups, 30-day point-in-time recovery</li></ul></div><div class="card"><h2>Privacy (DPDP Act, 2023)</h2><ul style="margin:0;padding-left:18px"><li>Consent notice for client, staff and contractor data</li><li>Location used only at site check-in, with consent</li><li>Data kept in India-region cloud storage</li><li>Access, correction and deletion requests handled in-app</li><li>Retention schedule for project records</li></ul></div></div>`;
+    if (tab === 'demo') body = `<div class="card"><h2>Demo data</h2><p>All projects, people (other than the founder), contractors, clients and amounts are fictional and generated for this demo. Your clicks change the data in this browser only.</p><button class="btn pri" style="margin-top:12px" data-act="reset">${ic('refresh')}Reset to starting state</button></div>`;
+    return `<div class="pagehead"><div><h1>Settings</h1><p>Company profile, roles and permissions, notification rules, integrations and security.</p></div></div>${R.tabs('set', [['company', 'Company'], ['roles', 'Roles & permissions'], ['notify', 'Notifications'], ['integrations', 'Integrations'], ['security', 'Security & privacy'], ['demo', 'Demo data']], tab)}${body}`;
+  };
+
+  // ---------- handover ----------
+  H.HO = {
+    items: p => {
+      const d = db(), sn = d.snags.filter(s => s.project === p.id && s.handover), docs = d.docs.filter(x => x.project === p.id && ['Warranty', 'Manual', 'As-built'].includes(x.type));
+      const inv = d.invoices.filter(i => i.project === p.id);
+      return [
+        ['Final inspection by PM', p.hoInspect || p.stage === 'completed'],
+        ['Snag list closed', sn.every(s => s.status === 'Closed')],
+        ['As-built drawings uploaded', docs.some(x => x.type === 'As-built' && x.status === 'Current')],
+        ['Warranties & equipment manuals', docs.filter(x => x.type !== 'As-built').every(x => x.status === 'Current')],
+        ['Vendor contacts for after-sales shared', p.hoContacts || p.stage === 'completed'],
+        ['Client walkthrough & digital acceptance', p.accepted],
+        ['Final invoice raised', (p.milestones || []).every(m => m.invoiced)],
+        ['Defects-liability follow-up scheduled', !!p.dlpUntil]
+      ];
+    },
+    view: p => {
+      const it = H.HO.items(p), sn = db().snags.filter(s => s.project === p.id && s.handover), docs = db().docs.filter(x => x.project === p.id && ['Warranty', 'Manual', 'As-built'].includes(x.type));
+      const doneN = it.filter(x => x[1]).length;
+      return `<div class="grid g2"><div class="card"><div class="hd"><h2>Handover readiness</h2><span class="pill ${doneN === it.length ? 'good' : 'gold'}">${doneN}/${it.length}</span></div><div class="list">${it.map(([l, ok]) => `<div><span class="pill ${ok ? 'good' : ''}">${ok ? 'Done' : 'Open'}</span><div class="li-main">${l}</div></div>`).join('')}</div>${p.stage === 'completed' ? `<p class="small muted" style="margin-top:10px">Closed ${H.fd(p.closed)} · defects-liability period until ${H.fd(p.dlpUntil)}.</p>` : ''}</div>
+<div class="stack"><div class="card"><div class="hd"><h2>Handover documents</h2>${p.stage !== 'completed' ? `<button class="btn sm" data-act="ho-docs" data-id="${p.id}">${ic('upload')}Upload pending</button>` : ''}</div>${docs.map(x => `<p class="small" style="margin-top:6px">${H.pill(x.status, x.status === 'Current' ? 'good' : 'warn')} ${esc(x.name)}</p>`).join('') || '<p class="small muted">None listed.</p>'}</div>
+${p.stage !== 'completed' ? `<div class="card"><h2>Close the project</h2><p class="small muted">Needs the checklist done. Client acceptance is captured in the client portal (or recorded here after a physical walkthrough).</p><div class="row" style="margin-top:10px"><button class="btn" data-act="ho-accept" data-id="${p.id}">Record client acceptance</button><button class="btn pri" data-act="ho-close" data-id="${p.id}" ${doneN >= it.length - 2 ? '' : 'disabled'}>Raise final invoice & close</button></div></div>` : ''}</div></div>
+<div class="card" style="margin-top:16px"><h2>Final snag list</h2><div style="margin-top:10px">${R.snagTable(sn)}</div></div>`;
+    }
+  };
+  Object.assign(H.A, {
+    'ho-docs': a => { db().docs.forEach(x => { if (x.project === a.dataset.id && ['Warranty', 'Manual', 'As-built'].includes(x.type)) { x.status = 'Current'; x.date = H.TODAY; } }); const p = H.P(a.dataset.id); p.hoContacts = true; p.hoInspect = true; H.log(S.user, 'Uploaded as-built drawings, warranties and manuals', p.id); H.commit('Handover documents uploaded'); },
+    'ho-accept': a => { const p = H.P(a.dataset.id); p.accepted = true; H.log(p.pm, `${H.CL(p.client).name} accepted the project after walkthrough`, p.id); H.commit('Client acceptance recorded'); },
+    'ho-close': a => { H.closeProject(a.dataset.id); H.commit('Project closed — final invoice raised, warranty follow-up scheduled'); }
+  });
+  H.closeProject = pid => {
+    const p = H.P(pid), d = db();
+    (p.milestones || []).filter(m => !m.invoiced).forEach(m => { m.invoiced = true; const tot = Math.round(m.amount * 1.18); d.invoices.push({ id: H.uid('i'), no: H.nextInvNo(), project: pid, milestone: m.name, taxable: m.amount, gst: tot - m.amount, total: tot, raised: H.TODAY, due: H.D(7), paid: 0, reminders: [] }); });
+    p.stage = 'completed'; p.progress = 100; p.closed = H.TODAY; p.dlpUntil = H.D(365); p.accepted = true; p.hoInspect = true; p.hoContacts = true;
+    d.activities.filter(a => a.project === pid).forEach(a => { a.prog = 100; a.ae = a.ae || H.TODAY; });
+    d.tasks.filter(t => t.project === pid && !H.done(t)).forEach(t => { t.status = 'Completed'; t.done = H.TODAY; });
+    d.events.push({ id: H.uid('ev'), title: `Defects-liability check — ${p.name} (6 months)`, type: 'Warranty', date: H.D(182), time: '11:00', dur: 60, project: pid, people: [p.pm], where: 'Site' });
+    H.log(S.user, `Project closed; final invoice raised; DLP until ${H.fd(p.dlpUntil)}`, pid);
+    H.notify('Client', `${p.name} handed over and closed`, 'project-' + pid);
+  };
+
+  // ---------- blueprint ----------
+  H.V.blueprint = () => {
+    const tab = S.ui.tab.bp || 'arch';
+    const T = [['arch', 'Architecture'], ['db', 'Database'], ['api', 'APIs & events'], ['demo', 'Demo vs production'], ['road', 'Roadmap'], ['extra', 'Beyond the brief']];
+    let b = '';
+    if (tab === 'arch') b = `<div class="card"><div class="er" style="overflow-x:auto">${H.archSvg()}</div></div><div class="grid g3" style="margin-top:16px">${[['Frontend', 'Next.js (React, TypeScript), Tailwind + a headless component library; installable PWA for site staff with offline drafts (IndexedDB) and background sync; React Native later for app-store builds sharing the API.'], ['Backend', 'NestJS (Node.js, TypeScript) modular monolith: CRM, Projects, Design, Execution, Procurement, Finance, Notifications, Automation, AI. REST + WebSocket gateway; BullMQ (Redis) for jobs, retries and schedules.'], ['Data', 'PostgreSQL with row-level security per project/role, pgvector for AI retrieval, S3-compatible object storage (India region) for drawings, photos and documents with versioning and signed URLs.'], ['AI copilot', 'LLM with retrieval over permitted records only; every answer cites record IDs; tools for drafting reports and messages; write actions need human approval; prompts and outputs logged.'], ['Integrations', 'WhatsApp Business API provider, email, DLT SMS, cloud telephony, Google/Outlook calendar, Tally/Zoho Books, payment gateway, e-sign, maps — behind one integration service with retries and logs.'], ['Operations', 'Containerised deploy (AWS Mumbai or Azure Central India), managed Postgres with PITR, daily backups, monitoring and alerting, staging environment, CI/CD with automated tests.']].map(([h, t]) => `<div class="card"><h2>${h}</h2><p class="small" style="margin-top:6px">${t}</p></div>`).join('')}</div>`;
+    if (tab === 'db') b = `<div class="card"><div class="er" style="overflow-x:auto">${H.erSvg()}</div><p class="small muted" style="margin-top:8px">Core tables shown. Every table carries created_by, created_at, updated_at; approvals, payments and changes write to an append-only audit_log.</p></div>`;
+    if (tab === 'api') b = `<div class="grid g2"><div class="card"><h2>REST resources</h2><pre class="small" style="margin:8px 0 0;white-space:pre-wrap">GET  /projects?stage=&health=
+GET  /projects/:id (overview, schedule, finance*)
+POST /leads · PATCH /leads/:id/stage
+POST /projects/:id/drawings (upload → version)
+POST /drawings/:id/transitions {to, comment}
+POST /site-visits (offline-sync safe, idempotency key)
+POST /tasks · PATCH /tasks/:id/status
+POST /change-requests · POST /:id/approve
+POST /invoices · POST /payments (bank-matched)
+POST /contractor-bills/:id/transitions
+GET  /ai/briefing · POST /ai/ask {question}
+* field-level permissions applied per role</pre></div><div class="card"><h2>Domain events (drive automation & real-time)</h2><pre class="small" style="margin:8px 0 0;white-space:pre-wrap">lead.created → assign, score, schedule follow-up
+survey.completed → design-brief task
+drawing.submitted → notify reviewer, start SLA timer
+drawing.client_approved → release next stage
+task.overdue → remind → escalate (configurable)
+site_visit.submitted → report PDF + action tasks
+contractor.work_completed → inspection task
+invoice.overdue → reminder draft → approval → send
+change.approved → budget, schedule, drawings, notify
+project.handover_due → snag & handover checklists</pre></div></div>`;
+    if (tab === 'demo') b = `<div class="tw"><table class="stack"><thead><tr><th>Capability</th><th>In this demo</th><th>Production needs</th></tr></thead><tbody>${[['All 20 modules, 6 role interfaces', 'Working, in-browser state', 'Backend + database'], ['Approvals, tasks, bills, changes, handover', 'Working workflows with audit trail', 'Server-side rules & permissions'], ['AI briefing, Q&A, delay prediction, workload', 'Rule-based answers computed from demo records', 'LLM + retrieval over the live database'], ['Site photos, evidence uploads', 'File names recorded; sample pictures generated', 'Object storage, compression, offline sync'], ['WhatsApp / email / SMS', 'Messages queued and logged, not sent', 'Provider accounts, Meta-approved templates, DLT'], ['Payments', 'Recorded and bank-matched manually', 'Gateway webhooks + bank-statement import / Tally'], ['Location check-in', 'Simulated consent check', 'Device geolocation with consent'], ['Voice-to-text notes', 'Typed notes', 'Speech-to-text service'], ['e-Signature', 'Simulated acceptance', 'e-Sign provider'], ['Persistence', 'This browser only', 'Cloud database, backups, multi-user']].map(r => `<tr><td><b style="font-weight:500">${r[0]}</b></td><td class="small">${r[1]}</td><td class="small">${r[2]}</td></tr>`).join('')}</tbody></table></div>`;
+    if (tab === 'road') b = `<div class="grid g2">${[['Phase 1 — Essential business control', '8–10 weeks', 'Owner dashboard, CRM & enquiries, project register, tasks & staff assignment, site-visit app with reports, drawing upload & approval tracking, basic billing & payment status.', 'Clean project list, staff roles, current drawings, open invoices; WhatsApp Business number.', 'Calls and Excel trackers replaced for status checks; owner sees every project daily.'], ['Phase 2 — Execution automation', '8–10 weeks', 'Contractor portal & bills, procurement with POs, Gantt/WBS with dependencies, quality checklists & snagging, change management, client portal, automated weekly reports.', 'Contractor list & rates, BOQ formats, approval matrix, client portal content rules.', 'Fewer delays from missed materials and approvals; contractor accountability; client confidence.'], ['Phase 3 — AI intelligence', '6–8 weeks', 'AI copilot with record citations, executive briefing, delay prediction, report & message drafting, workload analysis, anomaly alerts.', '3–6 months of clean data from phases 1–2; AI usage policy.', 'Owner review in minutes; early warnings before handover dates slip.'], ['Phase 4 — Enterprise expansion', 'Ongoing', 'Tally/Zoho sync & bank reconciliation, vendor performance analytics, resource & fee-burn planning, native Android/iOS apps, more automations, multi-office.', 'Accounting ledger mapping, payment gateway, app-store accounts.', 'Scale to 2–3× projects without matching admin headcount.']].map(([h, w, m, pre, val], i) => `<div class="card"><div class="hd"><h2>${h}</h2><span class="pill gold">${w}</span></div><p class="small"><b>Modules:</b> ${m}</p><p class="small" style="margin-top:6px"><b>Prerequisites:</b> ${pre}</p><p class="small" style="margin-top:6px"><b>Value:</b> ${val}</p><p class="small muted" style="margin-top:6px">Order: ${i + 1} of 4</p></div>`).join('')}</div>`;
+    if (tab === 'extra') b = `<div class="grid g2">${[['Timesheets & design-fee burn', 'Hours per project against the design fee, so under-priced projects show up early.'], ['RFIs & drawing transmittals', 'Formal register of questions from site/contractors and of every drawing issue, with acknowledgement.'], ['Client selections log', 'Finishes, fittings and colours the client signed off, linked to drawings and POs — ends “I never chose this”.'], ['Sample & mock-up approvals', 'Physical samples (stone, laminate, hardware) approved with photos before ordering.'], ['Society / authority NOCs', 'RWA, building management and municipal permissions with expiry tracking.'], ['Labour attendance & safety', 'Daily labour count by contractor, toolbox talks, PPE checks and incident log.'], ['Petty cash & site expenses', 'Site-level spend with bills, approval and project cost allocation.'], ['Warranty & AMC tracker', 'Post-handover service calls and warranty claims during the defects-liability period.'], ['Client NPS & case studies', 'Feedback at milestones and handover; approved photos flow to the portfolio and Instagram.'], ['BOQ & rate analysis library', 'Standard items and rates reused across proposals and contractor work orders.']].map(([h, t]) => `<div class="card"><h2>${h}</h2><p class="small" style="margin-top:6px">${t}</p></div>`).join('')}</div>`;
+    return `<div class="pagehead"><div><h1>System blueprint</h1><p>How the production version is built: architecture, data model, APIs, what this demo simulates and the phased roadmap.</p></div></div>${R.tabs('bp', T, tab)}${b}`;
+  };
+  H.archSvg = () => {
+    const box = (x, y, w, h, t, s, dark) => `<g><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${dark ? '#141312' : 'var(--panel2)'}" stroke="${dark ? '#c9a14a' : 'var(--line2)'}"/><text x="${x + w / 2}" y="${y + h / 2 - (s ? 4 : -4)}" text-anchor="middle" style="font:600 13px Inter;fill:${dark ? '#fff' : 'var(--ink)'}">${t}</text>${s ? `<text x="${x + w / 2}" y="${y + h / 2 + 13}" text-anchor="middle" style="font:11.5px Inter;fill:${dark ? '#c9a14a' : 'var(--muted)'}">${s}</text>` : ''}</g>`;
+    const ar = (x1, y1, x2, y2) => `<path d="M${x1} ${y1} L${x2} ${y2}" stroke="var(--muted)" stroke-width="1.3" marker-end="url(#ah)"/>`;
+    return `<svg viewBox="0 0 980 420" style="min-width:760px;width:100%;height:auto" role="img" aria-label="System architecture"><defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L8 4 L0 8z" fill="var(--muted)"/></marker></defs>
+${['Owner command centre', 'PM & office web', 'Site app (PWA)', 'Client portal', 'Contractor portal'].map((t, i) => box(20 + i * 192, 18, 172, 52, t, i === 2 ? 'offline drafts' : '')).join('')}
+${[0, 1, 2, 3, 4].map(i => ar(106 + i * 192, 72, 490, 128)).join('')}
+${box(300, 130, 380, 56, 'API gateway · auth · RBAC · WebSockets', 'MFA, row-level permissions, audit', true)}
+${['CRM & sales', 'Projects & schedule', 'Design & drawings', 'Execution & site', 'Procurement', 'Finance', 'Automation engine', 'AI copilot'].map((t, i) => box(20 + (i % 4) * 240, 220 + Math.floor(i / 4) * 64, 220, 50, t, '')).join('')}
+${ar(490, 188, 490, 216)}
+${box(20, 356, 300, 50, 'PostgreSQL + pgvector', 'RLS, audit_log, PITR backups')}${box(340, 356, 300, 50, 'Object storage (India region)', 'drawings, photos, documents')}${box(660, 356, 300, 50, 'Integrations service', 'WhatsApp, email, Tally, e-sign, calendar')}</svg>`;
+  };
+  H.erSvg = () => {
+    const T = [['clients', 'id, name, kind, gstin, phone, email', 20, 20], ['leads', 'id, source, score, stage, owner_id, client_id', 20, 130], ['projects', 'id, code, client_id, type, stage, start, due, value, pm_id', 260, 20], ['project_members', 'project_id, user_id, role', 260, 130], ['users', 'id, name, role, dept, mfa, status', 20, 240], ['activities', 'id, project_id, name, contractor_id, planned, actual, depends_on', 500, 20], ['tasks', 'id, project_id, assignee_id, status, due, blocked_by, activity_id', 500, 130], ['drawings', 'id, project_id, number, title, discipline, current_rev', 740, 20], ['drawing_revisions', 'id, drawing_id, rev, file, status, reviewer_id, client_status', 740, 130], ['site_visits', 'id, project_id, user_id, check_in, geo, progress', 260, 240], ['observations', 'id, visit_id, text, severity, contractor_id, task_id', 260, 350], ['contractors', 'id, name, trade, gstin, rating', 500, 240], ['contractor_bills', 'id, contractor_id, project_id, amount, status, retention', 500, 350], ['invoices', 'id, project_id, milestone, taxable, gst, total, due', 740, 240], ['payments', 'id, invoice_id, amount, mode, ref, verified_by', 740, 350], ['change_requests', 'id, project_id, cost, days, status, approved_by', 20, 350]];
+    const box = ([n, f, x, y]) => `<g><rect x="${x}" y="${y}" width="220" height="92" rx="8" fill="var(--panel2)" stroke="var(--line2)"/><rect x="${x}" y="${y}" width="220" height="26" rx="8" fill="#141312"/><text x="${x + 10}" y="${y + 18}" style="font:600 13px Inter;fill:#f2d38d">${n}</text>${f.split(', ').reduce((acc, c, i) => { const line = Math.floor(i / 3); acc[line] = (acc[line] ? acc[line] + ', ' : '') + c; return acc; }, []).map((l, i) => `<text x="${x + 10}" y="${y + 44 + i * 16}" style="font:11.5px Inter;fill:var(--muted)">${l}</text>`).join('')}</g>`;
+    const ln = (a, b) => { const A = T.find(t => t[0] === a), B = T.find(t => t[0] === b); return `<path d="M${A[2] + 110} ${A[3] + 46} L${B[2] + 110} ${B[3] + 46}" stroke="#c9a14a" stroke-opacity=".55" stroke-width="1.3"/>`; };
+    return `<svg viewBox="0 0 980 460" style="min-width:820px;width:100%;height:auto" role="img" aria-label="Database schema">${[['clients', 'projects'], ['leads', 'clients'], ['projects', 'project_members'], ['users', 'project_members'], ['projects', 'activities'], ['activities', 'tasks'], ['projects', 'drawings'], ['drawings', 'drawing_revisions'], ['projects', 'site_visits'], ['site_visits', 'observations'], ['contractors', 'contractor_bills'], ['projects', 'invoices'], ['invoices', 'payments'], ['projects', 'change_requests'], ['observations', 'tasks']].map(([a, b]) => ln(a, b)).join('')}${T.map(box).join('')}</svg>`;
+  };
+})();
