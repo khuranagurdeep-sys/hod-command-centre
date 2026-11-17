@@ -192,7 +192,7 @@
   ];
   const ACCESS = {
     owner: null,
-    pm: ['dashboard', 'ai', 'leads', 'projects', 'project', 'clients', 'design', 'drawings', 'tasks', 'visits', 'contractors', 'procurement', 'finance', 'team', 'calendar', 'reports', 'notifications', 'documents', 'automation'],
+    pm: ['dashboard', 'ai', 'leads', 'projects', 'project', 'clients', 'design', 'drawings', 'tasks', 'visits', 'contractors', 'procurement', 'finance', 'invoice', 'team', 'calendar', 'reports', 'notifications', 'documents', 'automation'],
     designer: ['dashboard', 'ai', 'projects', 'project', 'design', 'drawings', 'tasks', 'visits', 'calendar', 'notifications', 'documents']
   };
   H.can = key => { const a = ACCESS[S.role]; return !a || a.includes(key); };
@@ -207,23 +207,25 @@
 
   // ---------- charts ----------
   H.chart = (id, cfg, h) => { S.ui.charts[id] = cfg; return `<div class="fig" id="${id}" style="min-height:${h || 230}px"></div>`; };
+  const smooth = pts => pts.length < 3 ? 'M' + pts.map(p => p.join(' ')).join(' L') : pts.reduce((acc, p, i, a) => { if (!i) return `M${p[0]} ${p[1]}`; const p0 = a[i - 2] || a[i - 1], p1 = a[i - 1], p2 = p, p3 = a[i + 1] || p; const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6], c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6]; return acc + ` C${c1[0].toFixed(1)} ${c1[1].toFixed(1)} ${c2[0].toFixed(1)} ${c2[1].toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`; }, '');
   const draw = (el, cfg) => {
     const W = el.clientWidth, Hh = el.clientHeight; if (!W) return;
-    const m = { l: 52, r: 10, t: 14, b: 28 }, iw = W - m.l - m.r, ih = Hh - m.t - m.b;
-    const all = cfg.series.flatMap(s => s.values), max = Math.max(1, ...all) * 1.1;
+    const m = { l: 46, r: 12, t: 14, b: 28 }, iw = W - m.l - m.r, ih = Hh - m.t - m.b;
+    const all = cfg.series.flatMap(s => s.values), max = Math.max(1, ...all) * 1.12;
     const step = Math.pow(10, Math.floor(Math.log10(max / 4))), tick = Math.ceil(max / 4 / step) * step;
-    let s = `<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="${esc(cfg.label || '')}">`;
-    for (let v = 0; v <= max; v += tick) { const y = m.t + ih - v / max * ih; s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}" stroke="var(--line)"/><text x="${m.l - 8}" y="${y + 4}" text-anchor="end">${cfg.fmt ? cfg.fmt(v) : v}</text>`; }
+    let s = `<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="${esc(cfg.label || '')}"><defs>${cfg.series.map((se, j) => `<linearGradient id="${el.id}-g${j}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${se.color}" stop-opacity=".28"/><stop offset="1" stop-color="${se.color}" stop-opacity="0"/></linearGradient>`).join('')}</defs>`;
+    for (let v = 0; v <= max; v += tick) { const y = m.t + ih - v / max * ih; s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}" stroke="var(--line)" ${v ? 'stroke-dasharray="3 4"' : ''}/><text x="${m.l - 8}" y="${y + 4}" text-anchor="end">${cfg.fmt ? cfg.fmt(v) : v}</text>`; }
     const n = cfg.labels.length, gw = iw / n;
     if (cfg.type === 'bars') {
-      const k = cfg.series.length, bw = Math.min(26, gw * 0.7 / k);
-      cfg.series.forEach((se, j) => se.values.forEach((v, i) => { const x = m.l + gw * i + gw / 2 - bw * k / 2 + j * bw, hgt = v / max * ih; s += `<rect x="${x.toFixed(1)}" y="${(m.t + ih - hgt).toFixed(1)}" width="${(bw - 2).toFixed(1)}" height="${hgt.toFixed(1)}" rx="2" fill="${se.color}"><title>${esc(cfg.labels[i] + ' · ' + se.name + ': ' + (cfg.fmt ? cfg.fmt(v) : v))}</title></rect>`; }));
+      const k = cfg.series.length, bw = Math.min(22, gw * 0.62 / k);
+      cfg.series.forEach((se, j) => se.values.forEach((v, i) => { const x = m.l + gw * i + gw / 2 - (bw + 3) * k / 2 + j * (bw + 3), hgt = Math.max(0, v / max * ih), y = m.t + ih - hgt, r = Math.min(5, bw / 2, hgt); s += `<path d="M${x.toFixed(1)} ${(m.t + ih).toFixed(1)} V${(y + r).toFixed(1)} Q${x.toFixed(1)} ${y.toFixed(1)} ${(x + r).toFixed(1)} ${y.toFixed(1)} H${(x + bw - r).toFixed(1)} Q${(x + bw).toFixed(1)} ${y.toFixed(1)} ${(x + bw).toFixed(1)} ${(y + r).toFixed(1)} V${(m.t + ih).toFixed(1)}Z" fill="${se.color}"><title>${esc(cfg.labels[i] + ' · ' + se.name + ': ' + (cfg.fmt ? cfg.fmt(v) : v))}</title></path>`; }));
     } else {
-      cfg.series.forEach(se => {
-        const pts = se.values.map((v, i) => [m.l + gw * i + gw / 2, m.t + ih - v / max * ih]);
-        if (se.fill) s += `<path d="M${pts[0][0]},${m.t + ih} L${pts.map(p => p.join(',')).join(' L')} L${pts[pts.length - 1][0]},${m.t + ih} Z" fill="${se.color}" opacity=".14"/>`;
-        s += `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="${se.color}" stroke-width="2.4" ${se.dash ? 'stroke-dasharray="5 4"' : ''}/>`;
-        pts.forEach((p, i) => s += `<circle cx="${p[0]}" cy="${p[1]}" r="3.2" fill="${se.color}"><title>${esc(cfg.labels[i] + ' · ' + se.name + ': ' + (cfg.fmt ? cfg.fmt(se.values[i]) : se.values[i]))}</title></circle>`);
+      cfg.series.forEach((se, j) => {
+        const pts = se.values.map((v, i) => [+(m.l + gw * i + gw / 2).toFixed(1), +(m.t + ih - v / max * ih).toFixed(1)]);
+        const path = smooth(pts);
+        if (se.fill || cfg.type === 'area') if (se.fill) s += `<path d="${path} L${pts[pts.length - 1][0]} ${m.t + ih} L${pts[0][0]} ${m.t + ih}Z" fill="url(#${el.id}-g${j})"/>`;
+        s += `<path d="${path}" fill="none" stroke="${se.color}" stroke-width="2.4" stroke-linecap="round" ${se.dash ? 'stroke-dasharray="5 5"' : ''}/>`;
+        pts.forEach((p, i) => s += `<circle cx="${p[0]}" cy="${p[1]}" r="${i === pts.length - 1 ? 4.5 : 3}" fill="var(--panel)" stroke="${se.color}" stroke-width="2"><title>${esc(cfg.labels[i] + ' · ' + se.name + ': ' + (cfg.fmt ? cfg.fmt(se.values[i]) : se.values[i]))}</title></circle>`);
       });
     }
     cfg.labels.forEach((l, i) => { if (W < 520 && n > 8 && i % 2) return; s += `<text x="${m.l + gw * i + gw / 2}" y="${Hh - 8}" text-anchor="middle">${esc(l)}</text>`; });
@@ -279,24 +281,26 @@
     const nav = H.NAV.map(([g, items]) => {
       const vis = items.filter(([k]) => H.can(k));
       if (!vis.length) return '';
-      return `<div class="navgrp">${g}</div>` + vis.map(([k, l, i]) => `<a class="nav${r === k || (k === 'projects' && r === 'project') ? ' on' : ''}" href="#${k}" data-go="${k}">${H.ic(i)}<span>${l}</span>${c[k] ? `<span class="cnt${RED[k] ? ' red' : ''}">${c[k]}</span>` : ''}</a>`).join('');
+      return `<div class="navgrp">${g}</div>` + vis.map(([k, l, i]) => `<a class="nav${r === k || (k === 'projects' && r === 'project') || (k === 'finance' && r === 'invoice') ? ' on' : ''}" href="#${k}" data-go="${k}">${H.ic(i)}<span>${l}</span>${c[k] ? `<span class="cnt${RED[k] ? ' red' : ''}">${c[k]}</span>` : ''}</a>`).join('');
     }).join('');
     const u = H.E(S.user);
     return `<div class="app${S.ui.side ? ' side-open' : ''}">
-<aside class="side" aria-label="Main navigation"><div class="brand">${H.mark(36)}<div><b>Hands On Design</b><span>Command Centre</span></div></div>${nav}
-<div class="foot">Demo with fictional sample data.<br>Company details from handsondesign.in.</div></aside>
+<aside class="side" aria-label="Main navigation"><div class="brand">${H.mark(30)}<div><b>Hands On Design</b><span>Command Centre</span></div></div>${nav}
+<div class="foot">Demo with fictional sample data. Company details, logo and photographs from handsondesign.in.</div>
+<div class="me">${H.av(S.user)}<div class="li-main"><div class="t" style="font-size:13.5px">${esc(u ? u.name : '')}</div><div class="s" style="font-size:12px">${esc(H.ROLES[S.role].label)}</div></div><button class="btn icon sm ghost" data-act="pop" data-id="role" aria-label="Switch interface">${H.ic('users')}</button></div></aside>
 ${S.ui.side ? '<div class="scrim" data-act="side"></div>' : ''}
 <div class="main"><header class="top">
 <button class="btn icon menu-btn" data-act="side" aria-label="Open menu">${H.ic('menu')}</button>
-<div class="search">${H.ic('search')}<input id="gsearch" type="search" placeholder="Search projects, clients, drawings, tasks, contractors…" autocomplete="off" data-inp="search" aria-label="Global search"><div id="sres"></div></div>
+<div class="search">${H.ic('search')}<input id="gsearch" type="search" placeholder="Search projects, clients, drawings, invoices…" autocomplete="off" data-inp="search" aria-label="Global search"><span class="kbd">Ctrl K</span><div id="sres"></div></div>
 <div class="sp"></div>
+<span class="hide-sm">${H.Live ? H.Live.pill() : ''}</span>
 <button class="btn gold" data-act="scen-menu">${H.ic('play')}<span class="hide-sm">Demo scenarios</span></button>
 <div class="relw"><button class="btn icon" data-act="pop" data-id="create" aria-label="Quick create">${H.ic('plus')}</button>${S.ui.pop === 'create' ? H.createMenu() : ''}</div>
-<button class="btn icon relw" data-go="notifications" aria-label="Notifications">${H.ic('bell')}${c.notifications ? `<span style="position:absolute;top:4px;right:4px;background:var(--bad);color:#fff;border-radius:10px;font-size:11px;padding:0 5px">${c.notifications}</span>` : ''}</button>
-<div class="relw"><button class="btn" data-act="pop" data-id="role" style="padding-left:6px">${H.av(S.user)}<span class="hide-sm">${esc(u ? u.name.split(' ')[0] : '')}</span></button>${S.ui.pop === 'role' ? H.roleMenu() : ''}</div>
+<button class="btn icon relw" data-go="notifications" aria-label="Notifications">${H.ic('bell')}${c.notifications ? `<span style="position:absolute;top:3px;right:3px;background:var(--bad);color:#fff;border-radius:10px;font-size:10.5px;font-weight:700;padding:0 5px;line-height:16px">${c.notifications}</span>` : ''}</button>
+<div class="relw"><button class="btn" data-act="pop" data-id="role" style="padding-left:5px">${H.av(S.user)}<span class="hide-sm">${esc(u ? u.name.split(' ')[0] : '')}</span></button>${S.ui.pop === 'role' ? H.roleMenu() : ''}</div>
 </header><main class="view" id="view">${content}</main></div></div>`;
   };
-  H.createMenu = () => `<div class="pop" role="menu">${[['lead', 'New client enquiry', 'funnel'], ['task', 'New task', 'check'], ['visit', 'Schedule site visit', 'pin'], ['change', 'Change request', 'refresh'], ['drawing', 'Upload drawing / render', 'layers'], ['meeting', 'New meeting', 'cal'], ['invoice', 'Raise invoice', 'rupee'], ['doc', 'Upload document', 'upload']].filter(x => x[0] !== 'invoice' || S.role !== 'designer').map(([k, l, i]) => `<button data-act="modal" data-id="${k}" role="menuitem">${H.ic(i)}${l}</button>`).join('')}</div>`;
+  H.createMenu = () => `<div class="pop" role="menu">${[['lead', 'New client enquiry', 'funnel'], ['task', 'New task', 'check'], ['visit', 'Schedule site visit', 'pin'], ['change', 'Change request', 'refresh'], ['drawing', 'Upload drawing / render', 'layers'], ['meeting', 'New meeting', 'cal'], ['invoice', 'Design an invoice', 'rupee'], ['doc', 'Upload document', 'upload'], ['3d', 'Upload 3D model or render', 'layers']].filter(x => x[0] !== 'invoice' || S.role !== 'designer').map(([k, l, i]) => k === 'invoice' ? `<button data-go="invoice-new" role="menuitem">${H.ic(i)}${l}</button>` : k === '3d' ? `<button data-go="design" role="menuitem">${H.ic(i)}${l}</button>` : `<button data-act="modal" data-id="${k}" role="menuitem">${H.ic(i)}${l}</button>`).join('')}</div>`;
   H.roleMenu = () => `<div class="pop" role="menu" style="min-width:280px"><div class="small muted" style="padding:6px 10px">Switch interface (demo)</div>${Object.entries(H.ROLES).map(([k, r]) => `<button data-act="role" data-id="${k}" role="menuitem">${H.av(r.user)}<span><b style="font-weight:500">${r.label}</b><br><span class="small muted">${r.desc}</span></span></button>`).join('')}<button data-act="logout" role="menuitem">${H.ic('out')}Sign out</button></div>`;
   H.render = () => {
     const root = document.getElementById('root');
@@ -319,6 +323,7 @@ ${S.ui.side ? '<div class="scrim" data-act="side"></div>' : ''}
     }
     root.innerHTML = html + H.overlays();
     H.drawCharts();
+    (H.afterRender || []).forEach(f => { try { f(); } catch (e) { console.error(e); } });
     if (S.ui.hl) { const el = document.querySelector(`[data-k="${S.ui.hl}"]`); if (el) { el.classList.add('hl'); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } S.ui.hl = null; }
   };
   H.commit = (msg, hl) => { H.save(); if (hl) H.hl(hl); H.render(); if (msg) H.toast(msg); };
@@ -329,6 +334,7 @@ ${S.ui.side ? '<div class="scrim" data-act="side"></div>' : ''}
     if (S.ui.drawer && H.Drawer[S.ui.drawer.type]) o += `<div class="dscrim" data-act="close"></div><aside class="drawer" role="dialog" aria-modal="true"><div class="row between" style="margin-bottom:10px"><span class="muted small">${esc(S.ui.drawer.type.replace(/^\w/, c => c.toUpperCase()))} details</span><button class="btn icon ghost" data-act="close" aria-label="Close">${H.ic('x')}</button></div>${H.Drawer[S.ui.drawer.type](S.ui.drawer.id)}</aside>`;
     if (S.ui.modal && H.Modal[S.ui.modal.type]) o += `<div class="mscrim" data-act="close"></div><div class="modal" role="dialog" aria-modal="true"><div class="row between" style="margin-bottom:12px"><span></span><button class="btn icon ghost" data-act="close" aria-label="Close">${H.ic('x')}</button></div>${H.Modal[S.ui.modal.type](S.ui.modal)}</div>`;
     if (S.ui.scen) o += H.Scen.panel();
+    (H.extraOverlays || []).forEach(f => { try { o += f(); } catch (e) { console.error(e); } });
     return o;
   };
 

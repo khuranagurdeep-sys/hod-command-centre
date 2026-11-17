@@ -109,6 +109,21 @@
         ['Client accepts in the portal', 'Anil Verma walks through, ticks acceptance and signs digitally.', 'Accept as client', () => { to('client', null, () => { S.clientId = 'cl6'; S.ui.tab.cp = 'home'; }); const p = H.P('p6'); p.accepted = true; H.log('e1', `${H.CL(p.client).name} accepted handover digitally in the portal`, 'p6'); fin('Handover accepted by client'); }],
         ['Project closed', 'The final invoice is raised, the project moves to completed, and a defects-liability check is scheduled.', 'Close project', () => { to('owner', 'project-p6', () => { S.ui.tab['p-p6'] = 'handover'; }); H.closeProject('p6'); fin('Closed — final invoice raised, warranty check scheduled'); }]
       ]
+    },
+    {
+      id: 'model3d', t: '3D design review with the client', d: 'Interactive 3D model → shared in the portal → client explores it and approves.', steps: [
+        ['Designer opens the 3D model', 'Devansh opens the living-room concept for Mehra Farmhouse in the Design Studio. Anyone can orbit, zoom and pan it; .glb models from SketchUp, 3ds Max or Blender open the same way.', 'Open Design Studio', () => { to('designer', 'design', () => { S.ui.f.d3proj = 'p5'; }); fin('Drag the model to look around'); }],
+        ['Share it with the client', 'After internal review, the model is shared in the client portal with a WhatsApp alert. It becomes a revision-tracked sheet like any drawing.', 'Share with client', () => { to('pm', 'design', () => { S.ui.f.d3proj = 'p5'; }); ctx().dwg = H.V3D.sendToClient('p5'); fin('Shared in the client portal', 'dwg-' + ctx().dwg); }],
+        ['Client explores it in 3D', 'Rajiv Mehra opens his portal and walks around the room on his phone or laptop before approving.', 'Open as client', () => { to('client', null, () => { S.clientId = 'cl5'; S.ui.tab.cp = 'home'; S.ui.modal = { type: 'v3dview', id: ctx().dwg }; }); fin(''); }],
+        ['Client approves the design', 'One tap records the approval with date and revision; rule 4 releases the next stage.', 'Approve as client', () => { to('client', null, () => { S.clientId = 'cl5'; S.ui.tab.cp = 'designs'; }); H.approveDrawing(ctx().dwg, 'Client'); fin('Approved — next stage released'); }]
+      ]
+    },
+    {
+      id: 'invoice', t: 'GST invoice in one minute', d: 'Invoice designer → milestone billed with GST → issued → client sees and pays it.', steps: [
+        ['Open the invoice designer', 'The next billing milestone of Aurum Capital Office is pre-filled with SAC code, place of supply and IGST (Gurugram is inter-state).', 'Open designer', () => { S.ui.invd = null; to('owner', 'invoice-new-p3'); fin('Live A4 preview on the right'); }],
+        ['Issue the invoice', 'Issuing numbers it, adds it to receivables and the client portal, and marks the milestone as billed. Print or save as PDF from the same screen.', 'Issue invoice', () => { to('owner', 'invoice-new-p3'); H.A['inv-issue'](); }],
+        ['Client sees it in the portal', 'Aurum’s admin head sees the invoice with its total, due date and payment options.', 'Open client portal', () => { to('client', null, () => { S.clientId = 'cl3'; S.ui.tab.cp = 'pay'; }); fin(''); }]
+      ]
     }
   ];
   H.Scen = {
