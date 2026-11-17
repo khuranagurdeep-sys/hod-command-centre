@@ -184,7 +184,7 @@
   // ---------- access ----------
   H.NAV = [
     ['Command', [['dashboard', 'Executive Dashboard', 'grid'], ['ai', 'AI Command Centre', 'spark']]],
-    ['Business', [['leads', 'Leads & CRM', 'funnel'], ['projects', 'Projects', 'folder'], ['clients', 'Clients', 'users']]],
+    ['Business', [['leads', 'Leads & CRM', 'funnel'], ['estimates', 'Estimates & BOQ', 'list'], ['projects', 'Projects', 'folder'], ['clients', 'Clients', 'users']]],
     ['Design', [['design', 'Design Studio', 'pen'], ['drawings', 'Drawings & Approvals', 'layers']]],
     ['Execution', [['tasks', 'Task Management', 'check'], ['visits', 'Site Visits', 'pin'], ['contractors', 'Contractors', 'hammer'], ['procurement', 'Procurement & Materials', 'box']]],
     ['Office', [['finance', 'Finance & Payments', 'rupee'], ['team', 'Team & HR', 'team'], ['calendar', 'Calendar & Meetings', 'cal'], ['reports', 'Reports & Analytics', 'chart'], ['notifications', 'Notifications', 'bell'], ['documents', 'Documents', 'doc']]],
@@ -192,7 +192,7 @@
   ];
   const ACCESS = {
     owner: null,
-    pm: ['dashboard', 'ai', 'leads', 'projects', 'project', 'clients', 'design', 'drawings', 'tasks', 'visits', 'contractors', 'procurement', 'finance', 'invoice', 'team', 'calendar', 'reports', 'notifications', 'documents', 'automation'],
+    pm: ['dashboard', 'ai', 'leads', 'estimates', 'projects', 'project', 'clients', 'design', 'drawings', 'tasks', 'visits', 'contractors', 'procurement', 'finance', 'invoice', 'team', 'calendar', 'reports', 'notifications', 'documents', 'automation'],
     designer: ['dashboard', 'ai', 'projects', 'project', 'design', 'drawings', 'tasks', 'visits', 'calendar', 'notifications', 'documents']
   };
   H.can = key => { const a = ACCESS[S.role]; return !a || a.includes(key); };
